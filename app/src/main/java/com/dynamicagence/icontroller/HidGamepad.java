@@ -143,6 +143,7 @@ public class HidGamepad {
     public void start() {
         if (adapter == null) { status("Ce téléphone n'a pas de Bluetooth."); return; }
         if (!adapter.isEnabled()) { status("Active le Bluetooth puis relance."); return; }
+        applyBluetoothName();
         status("Ouverture du profil manette…");
         boolean ok = adapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() {
             @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
@@ -177,7 +178,7 @@ public class HidGamepad {
 
     private void register() {
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
-                "SA Controller", "Manette SA Controller", "Dynamic Agence",
+                "iController", "Manette iController", "Ligrade",
                 (byte) (BluetoothHidDevice.SUBCLASS1_NONE | BluetoothHidDevice.SUBCLASS2_GAMEPAD),
                 DESCRIPTOR);
         boolean ok = hid.registerApp(sdp, null, null, executor, callback);
@@ -252,7 +253,29 @@ public class HidGamepad {
         return hid != null ? hid.getConnectedDevices() : java.util.Collections.emptyList();
     }
 
+    /** Nom Bluetooth vu par la TV / le Mac pendant l'utilisation ; l'ancien est remis en quittant. */
+    public static final String BT_NAME = "iController";
+    private String originalName;
+
+    private void applyBluetoothName() {
+        try {
+            String cur = adapter.getName();
+            if (cur != null && !BT_NAME.equals(cur)) {
+                originalName = cur;
+                adapter.setName(BT_NAME);
+            }
+        } catch (SecurityException ignored) { }
+    }
+
+    private void restoreBluetoothName() {
+        try {
+            if (originalName != null && adapter != null) adapter.setName(originalName);
+        } catch (SecurityException ignored) { }
+        originalName = null;
+    }
+
     public void stop() {
+        restoreBluetoothName();
         if (hid != null) {
             disconnect();
             hid.unregisterApp();
