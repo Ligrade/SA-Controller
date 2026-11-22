@@ -10,8 +10,8 @@ android {
         applicationId 'com.dynamicagence.icontroller'
         minSdk 28          // Android 9 : API BluetoothHidDevice obligatoire
         targetSdk 34
-        versionCode 4
-        versionName '0.3.1'
+        versionCode 5
+        versionName '0.4'
     }
 
     buildTypes {

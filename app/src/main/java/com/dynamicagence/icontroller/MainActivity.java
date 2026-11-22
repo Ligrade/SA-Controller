@@ -389,7 +389,8 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
                 renderDevices();
             } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(act)) {
                 int s = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-                if (s == BluetoothAdapter.STATE_ON && !pad.isRegistered()) pad.start();
+                if (s == BluetoothAdapter.STATE_ON && hasPerms()) { pad.start(); refreshBonded(); }
+                else if (s == BluetoothAdapter.STATE_TURNING_OFF || s == BluetoothAdapter.STATE_OFF) pad.onBluetoothOff();
             }
         }
     };
@@ -456,7 +457,9 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     @Override protected void onResume() {
         super.onResume();
-        pad.ensureRegistered();
+        BluetoothAdapter a = pad.getAdapter();
+        if (hasPerms() && a != null && a.isEnabled() && !pad.isStarted()) { pad.start(); refreshBonded(); }
+        else pad.ensureRegistered();
         if (gtaView.getVisibility() == View.VISIBLE) gtaView.setActive(true);
     }
 
@@ -468,6 +471,10 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     @Override protected void onDestroy() {
         try { unregisterReceiver(receiver); } catch (Exception ignored) { }
+        try {
+            BluetoothAdapter a = pad.getAdapter();
+            if (a != null && a.isDiscovering()) a.cancelDiscovery();
+        } catch (SecurityException ignored) { }
         pad.stop();
         super.onDestroy();
     }

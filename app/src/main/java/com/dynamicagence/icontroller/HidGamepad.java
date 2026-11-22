@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothHidDeviceAppSdpSettings;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -67,6 +68,8 @@ public class HidGamepad {
             (byte) 0x95, 0x01,            //   Report Count (1)
             (byte) 0x81, 0x42,            //   Input (Data,Var,Abs,Null)
             0x65, 0x00,                   //   Unit (None)
+            0x35, 0x00,                   //   Physical Minimum (0) — remis à zéro pour les axes suivants
+            0x45, 0x00,                   //   Physical Maximum (0)
             0x75, 0x04,                   //   Report Size (4)
             (byte) 0x95, 0x01,            //   Report Count (1)
             (byte) 0x81, 0x03,            //   Input (Const) — bourrage
@@ -105,8 +108,11 @@ public class HidGamepad {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Executor executor;
 
-    private BluetoothHidDevice hid;
-    private boolean registered;
+    private volatile BluetoothHidDevice hid;
+    private volatile boolean registered;
+    private volatile boolean registering;
+    private volatile boolean proxyPending;
+    private volatile boolean stopped;
     private volatile BluetoothDevice connected;
     private BluetoothDevice pendingConnect;
     private BluetoothDevice lastHost;
@@ -135,63 +141,122 @@ public class HidGamepad {
 
     public BluetoothAdapter getAdapter() { return adapter; }
     public boolean isRegistered() { return registered; }
+    /** Vrai si le profil HID est ouvert ou en cours d'ouverture. */
+    public boolean isStarted() { return hid != null || proxyPending; }
     public BluetoothDevice getConnected() { return connected; }
 
-    private void status(String s) { main.post(() -> listener.onStatus(s)); }
+    private void status(String s) { main.post(() -> { if (!stopped) listener.onStatus(s); }); }
 
-    /** Ouvre le profil HID Device et enregistre la manette. */
+    private final Runnable noResponse = () -> {
+        if (!registered && !stopped) status("Pas de réponse du profil HID. Le fabricant l'a peut-être désactivé. "
+                + "Essaie : Paramètres › Options développeur, couper/rallumer le Bluetooth.");
+    };
+
+    /** Remet l'état « connecté » à zéro et prévient l'interface (Bluetooth coupé, profil fermé). */
+    private void resetConnection() {
+        synchronized (lock) { flushPending = false; }
+        handler.removeCallbacks(flush);
+        pendingConnect = null;
+        if (connected != null) {
+            final BluetoothDevice d = connected;
+            connected = null;
+            main.post(() -> { if (!stopped) listener.onConnectionChanged(d, false); });
+        }
+    }
+
+    /** Le Bluetooth vient de passer à l'arrêt : plus rien n'est connecté ni enregistré. */
+    public void onBluetoothOff() {
+        registered = false;
+        registering = false;
+        resetConnection();
+        status("Bluetooth désactivé.");
+    }
+
+    /** Ouvre le profil HID Device et enregistre la manette. Sans effet s'il est déjà ouvert. */
     public void start() {
+        if (stopped) return;
         if (adapter == null) { status("Ce téléphone n'a pas de Bluetooth."); return; }
         if (!adapter.isEnabled()) { status("Active le Bluetooth puis relance."); return; }
+        if (hid != null || proxyPending) { ensureRegistered(); return; }
         applyBluetoothName();
         status("Ouverture du profil manette…");
-        boolean ok = adapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() {
-            @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
-                if (profile != BluetoothProfile.HID_DEVICE) return;
-                hid = (BluetoothHidDevice) proxy;
-                register();
-            }
-            @Override public void onServiceDisconnected(int profile) {
-                if (profile != BluetoothProfile.HID_DEVICE) return;
-                hid = null;
-                registered = false;
-                status("Profil manette fermé par le système.");
-            }
-        }, BluetoothProfile.HID_DEVICE);
+        boolean ok;
+        try {
+            ok = adapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() {
+                @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                    if (profile != BluetoothProfile.HID_DEVICE) return;
+                    proxyPending = false;
+                    if (stopped) { closeProxy(proxy); return; }
+                    BluetoothHidDevice old = hid;
+                    if (old != null && old != proxy) closeProxy(old);
+                    hid = (BluetoothHidDevice) proxy;
+                    register();
+                }
+                @Override public void onServiceDisconnected(int profile) {
+                    if (profile != BluetoothProfile.HID_DEVICE) return;
+                    proxyPending = false;
+                    hid = null;
+                    registered = false;
+                    registering = false;
+                    resetConnection();
+                    status("Profil manette fermé par le système.");
+                }
+            }, BluetoothProfile.HID_DEVICE);
+        } catch (SecurityException e) {
+            status("Autorisation Bluetooth manquante.");
+            return;
+        }
         if (!ok) {
             status("Ce téléphone ne propose pas le mode « périphérique HID » (désactivé par le fabricant).");
             return;
         }
-        main.postDelayed(() -> {
-            if (!registered) status("Pas de réponse du profil HID. Le fabricant l'a peut-être désactivé. "
-                    + "Essaie : Paramètres › Options développeur, couper/rallumer le Bluetooth.");
-        }, 6000);
+        proxyPending = true;
+        main.removeCallbacks(noResponse);
+        main.postDelayed(noResponse, 6000);
+    }
+
+    private void closeProxy(BluetoothProfile proxy) {
+        try { adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, proxy); }
+        catch (SecurityException ignored) { }
     }
 
     /** À appeler au retour au premier plan : Android retire l'enregistrement HID en arrière-plan. */
     public void ensureRegistered() {
-        if (hid == null || registered) return;
+        if (stopped || hid == null || registered) return;
         if (pendingConnect == null) pendingConnect = lastHost;
         status("Réactivation de la manette…");
         register();
     }
 
     private void register() {
+        BluetoothHidDevice h = hid;
+        if (stopped || h == null || registering) return;
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
                 "iController", "Manette iController", "Ligrade",
                 (byte) (BluetoothHidDevice.SUBCLASS1_NONE | BluetoothHidDevice.SUBCLASS2_GAMEPAD),
                 DESCRIPTOR);
-        boolean ok = hid.registerApp(sdp, null, null, executor, callback);
+        registering = true;
+        boolean ok;
+        try {
+            ok = h.registerApp(sdp, null, null, executor, callback);
+        } catch (SecurityException e) {
+            registering = false;
+            status("Autorisation Bluetooth manquante.");
+            return;
+        }
+        if (!ok) registering = false;
         if (!ok) status("Enregistrement refusé. Une autre appli utilise peut-être déjà le mode HID.");
     }
 
     private final BluetoothHidDevice.Callback callback = new BluetoothHidDevice.Callback() {
         @Override public void onAppStatusChanged(BluetoothDevice plugged, boolean reg) {
             registered = reg;
-            if (reg) {
+            registering = false;
+            BluetoothHidDevice h = hid;
+            if (reg && h != null) {
                 status("Manette prête. Connecte-toi à la TV ou au Mac.");
                 if (pendingConnect != null) { BluetoothDevice d = pendingConnect; pendingConnect = null; connect(d); }
-                else if (plugged != null) hid.connect(plugged);
+                else if (plugged != null) h.connect(plugged);
             } else {
                 status("Manette en pause (appli en arrière-plan). Elle se réactive au retour.");
             }
@@ -202,29 +267,32 @@ public class HidGamepad {
                 connected = device;
                 lastHost = device;
                 status("Connecté à " + name(device));
-                main.post(() -> listener.onConnectionChanged(device, true));
+                main.post(() -> { if (!stopped) listener.onConnectionChanged(device, true); });
                 sendNow();
             } else if (state == BluetoothProfile.STATE_CONNECTING) {
                 status("Connexion à " + name(device) + "…");
             } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
                 if (device.equals(connected)) connected = null;
                 status("Déconnecté de " + name(device));
-                main.post(() -> listener.onConnectionChanged(device, false));
+                main.post(() -> { if (!stopped) listener.onConnectionChanged(device, false); });
             }
         }
 
         @Override public void onGetReport(BluetoothDevice device, byte type, byte id, int bufferSize) {
+            BluetoothHidDevice h = hid;
+            if (h == null) return;
             if (type == BluetoothHidDevice.REPORT_TYPE_INPUT) {
                 byte[] data;
                 synchronized (lock) { fill(); data = report.clone(); }
-                hid.replyReport(device, type, REPORT_ID, data);
+                h.replyReport(device, type, REPORT_ID, data);
             } else {
-                hid.reportError(device, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ);
+                h.reportError(device, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ);
             }
         }
 
         @Override public void onSetReport(BluetoothDevice device, byte type, byte id, byte[] data) {
-            hid.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS);
+            BluetoothHidDevice h = hid;
+            if (h != null) h.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS);
         }
     };
 
@@ -238,30 +306,43 @@ public class HidGamepad {
     }
 
     public void connect(BluetoothDevice device) {
-        if (hid == null) { pendingConnect = device; status("Manette pas encore prête…"); return; }
+        BluetoothHidDevice h = hid;
+        if (h == null) { pendingConnect = device; status("Manette pas encore prête…"); return; }
         if (!registered) { pendingConnect = device; status("Réactivation de la manette…"); register(); return; }
-        if (connected != null && !connected.equals(device)) hid.disconnect(connected);
+        BluetoothDevice cur = connected;
+        if (cur != null && !cur.equals(device)) h.disconnect(cur);
         status("Connexion à " + name(device) + "…");
-        if (!hid.connect(device)) status("Connexion refusée par le système.");
+        if (!h.connect(device)) status("Connexion refusée par le système.");
     }
 
     public void disconnect() {
-        if (hid != null && connected != null) hid.disconnect(connected);
+        lastHost = null;      // déconnexion voulue : pas de reconnexion automatique
+        pendingConnect = null;
+        BluetoothHidDevice h = hid;
+        BluetoothDevice cur = connected;
+        if (h != null && cur != null) h.disconnect(cur);
     }
 
     public List<BluetoothDevice> connectedHosts() {
-        return hid != null ? hid.getConnectedDevices() : java.util.Collections.emptyList();
+        BluetoothHidDevice h = hid;
+        return h != null ? h.getConnectedDevices() : java.util.Collections.emptyList();
     }
 
     /** Nom Bluetooth vu par la TV / le Mac pendant l'utilisation ; l'ancien est remis en quittant. */
     public static final String BT_NAME = "iController";
     private String originalName;
 
+    private SharedPreferences prefs() { return context.getSharedPreferences("app", Context.MODE_PRIVATE); }
+
     private void applyBluetoothName() {
         try {
             String cur = adapter.getName();
-            if (cur != null && !BT_NAME.equals(cur)) {
+            if (BT_NAME.equals(cur)) {
+                // Appli tuée au précédent lancement : on reprend le nom d'origine sauvegardé
+                if (originalName == null) originalName = prefs().getString("btNameOrigine", null);
+            } else if (cur != null) {
                 originalName = cur;
+                prefs().edit().putString("btNameOrigine", cur).apply();
                 adapter.setName(BT_NAME);
             }
         } catch (SecurityException ignored) { }
@@ -269,20 +350,32 @@ public class HidGamepad {
 
     private void restoreBluetoothName() {
         try {
-            if (originalName != null && adapter != null) adapter.setName(originalName);
+            if (originalName != null && adapter != null) {
+                adapter.setName(originalName);
+                prefs().edit().remove("btNameOrigine").apply();
+            }
         } catch (SecurityException ignored) { }
         originalName = null;
     }
 
     public void stop() {
+        stopped = true;
+        main.removeCallbacksAndMessages(null);
+        handler.removeCallbacks(flush);
         restoreBluetoothName();
-        if (hid != null) {
-            disconnect();
-            hid.unregisterApp();
-            adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, hid);
-        }
+        BluetoothHidDevice h = hid;
         hid = null;
         registered = false;
+        registering = false;
+        if (h != null) {
+            try {
+                BluetoothDevice cur = connected;
+                if (cur != null) h.disconnect(cur);
+                h.unregisterApp();
+                adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, h);
+            } catch (SecurityException ignored) { }
+        }
+        connected = null;
         thread.quitSafely();
     }
 
