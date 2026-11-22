@@ -37,9 +37,9 @@ Recherche des appareils Bluetooth à proximité, association, connexion, déconn
 
 ## Installation
 
-L'APK n'est pas dans le dépôt : il se compile ([voir plus bas](#compiler)).
+L'APK est compilé automatiquement par GitHub (onglet **Releases** du dépôt, ou **Actions** › dernier run › Artifacts). Tu peux aussi le compiler toi-même ([voir plus bas](#compiler)).
 
-1. Copie `app-release.apk` sur le téléphone.
+1. Télécharge l'APK depuis la dernière release et copie-le sur le téléphone.
 2. Autorise l'installation depuis des sources inconnues quand Android le demande.
 3. Si Play Protect avertit (l'APK est signé avec une clé de test), choisis « Installer quand même ».
 4. Au premier lancement, accepte les autorisations Bluetooth (« Appareils à proximité » sur Android 12 et plus ; la localisation sur Android 9 à 11, nécessaire à la recherche d'appareils).
