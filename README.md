@@ -8,7 +8,7 @@ Transforme un vieux téléphone Android en manette Bluetooth reconnue nativement
   <img src="captures/gta-en-voiture-16-9.png" alt="Écran GTA San Andreas, en voiture" width="32%">
 </p>
 
-> Version 0.4. L'appli n'a pas encore été testée sur un vrai appareil : voir [Limites](#compatibilité-et-limites).
+> Version 0.5. L'appli n'a pas encore été testée sur un vrai appareil : voir [Limites](#compatibilité-et-limites).
 
 ## Fonctionnalités
 
@@ -33,7 +33,7 @@ Recherche des appareils Bluetooth à proximité, association, connexion, déconn
 - **Mac** : les applis qui lisent les manettes génériques (Chrome avec la Gamepad API, Steam / SDL, émulateurs) devraient la voir. En revanche, les jeux qui n'acceptent que les manettes Apple, Xbox ou PlayStation ne la reconnaîtront pas forcément.
 - **Touches GTA par défaut = suppositions.** Elles sont calquées sur la disposition manette Xbox 360 de GTA San Andreas et n'ont pas été vérifiées dans le jeu. À ajuster dans l'écran « Touches ».
 - **Bluetooth uniquement** : pas de Wi-Fi ni d'USB (il faudrait une appli réceptrice côté TV, ou le root).
-- **Pas encore testé sur un vrai appareil** (v0.4).
+- **Pas encore testé sur un vrai appareil** (v0.5).
 
 ## Installation
 
@@ -118,6 +118,6 @@ Package `com.dynamicagence.icontroller`, dans `app/src/main/java/…` :
 
 ## Version
 
-v0.4 (versionCode 5), `minSdk 28`, `targetSdk 34`.
+v0.5 (versionCode 6), `minSdk 28`, `targetSdk 34`.
 
 Réalisation : By Ligrade
