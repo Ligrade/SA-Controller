@@ -31,7 +31,7 @@ import java.util.List;
 /**
  * Écran dédié à GTA San Andreas : boutons nommés par action, modes « À pied » / « En voiture »,
  * zone caméra au centre (stick droit), stick gauche et conduite par inclinaison en option.
- * Même direction artistique que {@link GamepadView} (noir laqué, liserés, halo bleu).
+ * Même direction artistique que {@link GamepadView} ({@link Theme}).
  */
 public class GtaView extends View implements SensorEventListener {
 
@@ -40,13 +40,8 @@ public class GtaView extends View implements SensorEventListener {
         void onSettings();
     }
 
-    // Palette (reprise de GamepadView)
-    private static final int GLOW = Color.rgb(127, 184, 255);
-    private static final int AMBER = Color.rgb(255, 174, 66);
-    private static final int LABEL = Color.rgb(200, 204, 212);
-    private static final int LABEL_DIM = Color.rgb(120, 126, 138);
-    private static final int LED_ON = Color.rgb(255, 59, 48);
-    private static final int LED_OFF = Color.rgb(48, 22, 22);
+    private static final int GLOW = Theme.BLUE;
+    private static final int AMBER = Theme.AMBER;
 
     private final HidGamepad pad;
     private final GtaKeys keys;
@@ -59,8 +54,6 @@ public class GtaView extends View implements SensorEventListener {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint s = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private final Typeface bold = Typeface.create("sans-serif-medium", Typeface.BOLD);
-    private final Typeface regular = Typeface.create("sans-serif", Typeface.NORMAL);
 
     private Bitmap body;   // décor pré-rendu (perf sur vieux téléphone)
     private float u, slop;
@@ -83,7 +76,7 @@ public class GtaView extends View implements SensorEventListener {
     /** Bouton d'action GTA : envoie la touche de manette choisie dans les réglages. */
     private class ActionBtn extends Control {
         final GtaKeys.Action a; final int shape;
-        boolean pressed; int held = GtaKeys.NONE;
+        boolean pressed; int held = GtaKeys.NONE; float glow;
         ActionBtn(String id, int shape) { this.a = GtaKeys.find(id); this.shape = shape; }
         boolean hit(float x, float y) {
             if (shape == ROUND)
@@ -100,6 +93,7 @@ public class GtaView extends View implements SensorEventListener {
                 press(held, true);
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             } else {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_RELEASE);
                 press(held, false);
                 held = GtaKeys.NONE;
                 if (a.toggleMode && keys.autoMode() && !releasing)
@@ -327,9 +321,15 @@ public class GtaView extends View implements SensorEventListener {
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
 
-    /** Stick gauche = X de l'inclinaison (si active) + Y du pouce. */
+    /** X du stick gauche : pouce + inclinaison (si active), jamais l'un sans l'autre. */
+    private float leftX() {
+        float x = listening ? tiltX + stick.kx : stick.kx;
+        return Math.max(-1f, Math.min(1f, x));
+    }
+
+    /** Stick gauche = X (pouce + inclinaison) + Y du pouce. */
     private void pushLeft() {
-        float x = listening ? tiltX : stick.kx;
+        float x = leftX();
         pad.setLeftStick(x, stick.ky);
     }
 
@@ -419,7 +419,7 @@ public class GtaView extends View implements SensorEventListener {
         RectF carte = new RectF(R - u * 0.385f, ty - th, R - u * 0.145f, ty + th);
         fVue.r.set(vue); cVue.r.set(vue);
         fCarte.r.set(carte); cCarte.r.set(carte);
-        ledX = w * 0.5f; ledY = u * 0.175f;
+        ledX = w * 0.5f; ledY = u * 0.172f;
 
         // Rangée de pilules sous la barre
         float py0 = u * 0.255f, py1 = u * 0.345f;
@@ -467,113 +467,66 @@ public class GtaView extends View implements SensorEventListener {
         cam.r.set(stickRight + u * 0.02f, u * 0.235f, camRight, rowY0 - u * 0.025f);
 
         if (body != null) body.recycle();
-        body = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        body = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
         renderBody(new Canvas(body), w, h);
     }
 
-    /** Fond laqué + creux du stick et de la zone caméra. Redessiné seulement au changement de mode. */
+    /** Fond + creux du stick et de la zone caméra (opaque). Redessiné seulement au changement de mode. */
     private void renderBody(Canvas c, int w, int h) {
-        p.setShader(new RadialGradient(w * 0.5f, h * 0.45f, Math.max(w, h) * 0.7f,
-                Color.rgb(22, 23, 28), Color.rgb(4, 4, 5), Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, w, h, p);
-
-        // Plateau noir laqué
-        RectF deck = new RectF(u * 0.008f, u * 0.008f, w - u * 0.008f, h - u * 0.008f);
-        float cr = u * 0.07f;
+        c.drawColor(Theme.BG);
         p.setShader(null);
-        p.setColor(Color.argb(200, 0, 0, 0));
-        p.setShadowLayer(u * 0.03f, 0, u * 0.01f, Color.argb(220, 0, 0, 0));
-        c.drawRoundRect(deck, cr, cr, p);
-        p.clearShadowLayer();
-        p.setShader(new LinearGradient(0, 0, 0, h,
-                new int[]{Color.rgb(46, 49, 57), Color.rgb(24, 26, 31), Color.rgb(11, 12, 15)},
-                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
-        c.drawRoundRect(deck, cr, cr, p);
-        // Reflet brillant en haut
-        c.save();
-        Path clip = new Path();
-        clip.addRoundRect(deck, cr, cr, Path.Direction.CW);
-        c.clipPath(clip);
-        p.setShader(new LinearGradient(0, 0, 0, h * 0.4f,
-                Color.argb(40, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.drawOval(-w * 0.1f, -h * 0.3f, w * 1.1f, h * 0.38f, p);
-        // Lueur de la couleur du mode en bas
-        int a = accent();
-        p.setShader(new RadialGradient(w * 0.5f, h * 1.05f, w * 0.55f,
-                Color.argb(34, Color.red(a), Color.green(a), Color.blue(a)),
-                Color.argb(0, Color.red(a), Color.green(a), Color.blue(a)), Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, w, h, p);
-        c.restore();
-        p.setShader(null);
+        // Filet sous la barre du haut
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.006f);
-        s.setColor(Color.argb(50, 255, 255, 255));
-        c.drawRoundRect(deck.left, deck.top + u * 0.003f, deck.right, deck.bottom, cr, cr, s);
-        s.setColor(Color.BLACK);
-        s.setStrokeWidth(u * 0.005f);
-        c.drawRoundRect(deck, cr, cr, s);
-
-        // Rainure sous la barre du haut
         s.setStrokeWidth(u * 0.003f);
-        s.setColor(Color.argb(150, 0, 0, 0));
+        s.setColor(Theme.HAIR);
         float gy = u * 0.215f;
-        c.drawLine(u * 0.06f, gy, w - u * 0.06f, gy, s);
-        s.setColor(Color.argb(28, 255, 255, 255));
-        c.drawLine(u * 0.06f, gy + u * 0.004f, w - u * 0.06f, gy + u * 0.004f, s);
+        c.drawLine(u * 0.03f, gy, w - u * 0.03f, gy, s);
 
         // Creux du stick
         well(c, stick.cx, stick.cy, stick.range * 1.08f);
 
-        // Zone caméra : cuvette arrondie, trame de points
+        // Zone caméra
         RectF cr2 = cam.r;
         float rr = u * 0.05f;
-        p.setShader(new LinearGradient(0, cr2.top, 0, cr2.bottom,
-                Color.rgb(8, 9, 11), Color.rgb(26, 28, 34), Shader.TileMode.CLAMP));
+        p.setColor(Theme.WELL);
         c.drawRoundRect(cr2, rr, rr, p);
-        p.setShader(null);
-        s.setShader(new LinearGradient(0, cr2.top, 0, cr2.bottom,
-                Color.argb(200, 0, 0, 0), Color.argb(60, 255, 255, 255), Shader.TileMode.CLAMP));
-        s.setStrokeWidth(u * 0.004f);
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(Theme.HAIR);
         c.drawRoundRect(cr2, rr, rr, s);
-        s.setShader(null);
-        p.setColor(Color.argb(26, 255, 255, 255));
-        float step = u * 0.045f, dot = u * 0.0035f;
+        p.setColor(Color.argb(22, 255, 255, 255));
+        float step = u * 0.05f, dot = u * 0.003f;
         for (float y = cr2.top + step * 0.7f; y < cr2.bottom - step * 0.4f; y += step)
             for (float x = cr2.left + step * 0.7f; x < cr2.right - step * 0.4f; x += step)
                 c.drawCircle(x, y, dot, p);
-        t.setTypeface(bold);
-        t.setTextSize(u * 0.034f);
+        t.setTypeface(Theme.MEDIUM);
+        t.setTextSize(u * 0.03f);
         t.setLetterSpacing(0.3f);
-        t.setColor(Color.rgb(70, 75, 88));
+        t.setColor(Theme.FAINT);
         c.drawText("CAMÉRA", cr2.centerX(), cr2.centerY() - u * 0.005f, t);
-        t.setTypeface(regular);
+        t.setTypeface(Theme.REGULAR);
         t.setTextSize(u * 0.024f);
-        t.setLetterSpacing(0.05f);
-        t.setColor(Color.rgb(62, 66, 78));
+        t.setLetterSpacing(0.02f);
         c.drawText("glisse pour regarder autour", cr2.centerX(), cr2.centerY() + u * 0.04f, t);
-        t.setLetterSpacing(0f);
 
         // Légende du stick
-        t.setTypeface(regular);
+        t.setTypeface(Theme.MEDIUM);
         t.setTextSize(u * 0.022f);
-        t.setLetterSpacing(0.15f);
-        t.setColor(LABEL_DIM);
+        t.setLetterSpacing(0.14f);
+        t.setColor(Theme.DIM);
         String leg = mode == GtaKeys.CAR ? "DIRECTION" : "MARCHER";
         c.drawText(leg, stick.cx, stick.cy - stick.range * 1.08f - u * 0.05f, t);
         t.setLetterSpacing(0f);
     }
 
     private void well(Canvas c, float cx, float cy, float r) {
-        p.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.rgb(6, 7, 9), Color.rgb(34, 37, 44), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, r, p);
         p.setShader(null);
-        s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.argb(200, 0, 0, 0), Color.argb(70, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, r, s);
+        p.setColor(Theme.WELL);
+        c.drawCircle(cx, cy, r, p);
         s.setShader(null);
+        s.setStyle(Paint.Style.STROKE);
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(Theme.HAIR);
+        c.drawCircle(cx, cy, r, s);
     }
 
     // ================= Dessin =================
@@ -581,11 +534,14 @@ public class GtaView extends View implements SensorEventListener {
     @Override protected void onDraw(Canvas c) {
         if (body == null) return;
         c.drawBitmap(body, 0, 0, null);
-        drawLeds(c);
         drawStatus(c);
         for (int i = controls.size() - 1; i >= 0; i--) controls.get(i).draw(c);
         if (debugHits) drawHits(c);
-        if (!connected) postInvalidateDelayed(500);
+        boolean fading = false;
+        for (Control ctl : controls)
+            if (ctl instanceof ActionBtn && ((ActionBtn) ctl).glow > 0f && !((ActionBtn) ctl).pressed) { fading = true; break; }
+        if (fading) postInvalidateOnAnimation();
+        else if (!connected) postInvalidateDelayed(500);
     }
 
     private void drawHits(Canvas c) {
@@ -604,44 +560,39 @@ public class GtaView extends View implements SensorEventListener {
         p.setAlpha(255);
     }
 
-    /** Coque de bouton (rond, pilule ou pédale), avec ombre, dégradé, liseré. */
-    private void drawCap(Canvas c, RectF r, int shape, boolean on, float rad) {
+    private static int mix(int a, int b, float k) {
+        k = Math.max(0f, Math.min(1f, k));
+        return Color.rgb((int) (Color.red(a) + (Color.red(b) - Color.red(a)) * k),
+                (int) (Color.green(a) + (Color.green(b) - Color.green(a)) * k),
+                (int) (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k));
+    }
+
+    private static float ease(ActionBtn b) {
+        if (b.pressed) { b.glow = 1f; return 1f; }
+        if (b.glow > 0f) b.glow = Math.max(0f, b.glow - 0.16f);
+        return b.glow;
+    }
+
+    /** Coque de bouton (rond, pilule ou pédale) : aplat, filet fin ; enfoncé = teinte de l'accent. */
+    private void drawCap(Canvas c, RectF r, int shape, float k, float rad) {
         int acc = accent();
-        if (on) {
-            float hr = Math.max(r.width(), r.height()) * 0.75f;
-            p.setShader(new RadialGradient(r.centerX(), r.centerY(), hr,
-                    Color.argb(110, Color.red(acc), Color.green(acc), Color.blue(acc)),
-                    Color.argb(0, Color.red(acc), Color.green(acc), Color.blue(acc)), Shader.TileMode.CLAMP));
-            c.drawCircle(r.centerX(), r.centerY(), hr, p);
-        } else {
-            p.setShader(null);
-            p.setColor(Color.argb(170, 0, 0, 0));
-            c.save();
-            c.translate(0, u * 0.008f);
-            capShape(c, r, shape, rad, p);
-            c.restore();
-        }
-        p.setShader(new LinearGradient(0, r.top, 0, r.bottom,
-                on ? new int[]{Color.rgb(24, 26, 32), Color.rgb(40, 44, 52)}
-                   : new int[]{Color.rgb(68, 72, 84), Color.rgb(22, 24, 29)},
-                null, Shader.TileMode.CLAMP));
-        capShape(c, r, shape, rad, p);
         p.setShader(null);
-        s.setStyle(Paint.Style.STROKE);
-        if (!on) { // reflet sur l'arête haute
-            s.setStrokeWidth(u * 0.005f);
-            s.setShader(new LinearGradient(0, r.top, 0, r.top + Math.min(r.height(), u * 0.08f),
-                    Color.argb(80, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP));
-            c.save();
-            c.translate(0, u * 0.003f);
-            capShape(c, r, shape, rad, s);
-            c.restore();
-            s.setShader(null);
+        if (k > 0f) {
+            p.setColor(Theme.alpha(acc, (int) (60 * k)));
+            float g = u * 0.012f * k;
+            rr.set(r.left - g, r.top - g, r.right + g, r.bottom + g);
+            capShape(c, rr, shape, rad + g, p);
         }
-        s.setStrokeWidth(u * (on ? 0.006f : 0.004f));
-        s.setColor(on ? acc : Color.BLACK);
+        p.setColor(mix(Theme.SURFACE, mix(Theme.SURFACE, acc, 0.45f), k));
+        capShape(c, r, shape, rad, p);
+        s.setShader(null);
+        s.setStyle(Paint.Style.STROKE);
+        s.setStrokeWidth(u * (k > 0.5f ? 0.005f : 0.0035f));
+        s.setColor(k > 0.5f ? acc : Theme.HAIR);
         capShape(c, r, shape, rad, s);
     }
+
+    private final RectF rr = new RectF();
 
     private void capShape(Canvas c, RectF r, int shape, float rad, Paint paint) {
         if (shape == ROUND) c.drawCircle(r.centerX(), r.centerY(), r.width() / 2f, paint);
@@ -657,97 +608,81 @@ public class GtaView extends View implements SensorEventListener {
 
     private void drawAction(Canvas c, ActionBtn b) {
         RectF r = b.r;
+        float k = ease(b);
         boolean on = b.pressed;
-        int acc = accent();
         int target = on ? b.held : keys.get(b.a);
         String key = GtaKeys.shortName(target);
-        int keyCol = GtaKeys.color(target);
+        int keyCol = Theme.keyColor(target);
         float cx = r.centerX(), cy = r.centerY();
+        int ink = mix(Theme.TEXT, Color.WHITE, k);
 
         if (b.shape == ROUND) {
             float rad = r.width() / 2f;
             c.save();
-            if (on) c.scale(0.96f, 0.96f, cx, cy);
-            drawCap(c, r, ROUND, on, 0);
-            // Libellé
-            t.setTypeface(bold);
-            t.setLetterSpacing(0.04f);
-            fit(b.a.label, rad * 0.36f, rad * 1.6f);
-            t.setColor(on ? Color.WHITE : LABEL);
-            if (on) t.setShadowLayer(rad * 0.25f, 0, 0, acc);
-            c.drawText(b.a.label, cx, cy - rad * 0.02f, t);
-            t.clearShadowLayer();
+            c.scale(1f - 0.04f * k, 1f - 0.04f * k, cx, cy);
+            drawCap(c, r, ROUND, k, 0);
+            t.setTypeface(Theme.MEDIUM);
+            t.setLetterSpacing(0.05f);
+            fit(b.a.label, rad * 0.34f, rad * 1.5f);
+            t.setColor(ink);
+            c.drawText(b.a.label, cx, cy - rad * 0.06f, t);
             t.setLetterSpacing(0f);
-            // Touche de manette
-            drawBadge(c, key, keyCol, cx, cy + rad * 0.42f, rad * 0.27f);
+            drawBadge(c, key, keyCol, cx, cy + rad * 0.42f, rad * 0.25f);
             c.restore();
         } else if (b.shape == PEDAL) {
-            float rad = u * 0.04f;
+            float rad = u * 0.045f;
             c.save();
-            if (on) c.translate(0, u * 0.008f);
-            drawCap(c, r, PEDAL, on, rad);
-            // Stries antidérapantes
+            c.scale(1f - 0.02f * k, 1f - 0.02f * k, cx, cy);
+            drawCap(c, r, PEDAL, k, rad);
+            // Rainures
             s.setStyle(Paint.Style.STROKE);
             s.setStrokeCap(Paint.Cap.ROUND);
-            s.setStrokeWidth(u * 0.012f);
-            float x0 = r.left + r.width() * 0.22f, x1 = r.right - r.width() * 0.22f;
-            float y0 = r.top + r.height() * 0.30f, y1 = r.bottom - r.height() * 0.24f;
-            int n = 5;
-            for (int i = 0; i < n; i++) {
-                float y = y0 + (y1 - y0) * i / (n - 1);
-                s.setColor(Color.argb(150, 0, 0, 0));
-                c.drawLine(x0, y + u * 0.003f, x1, y + u * 0.003f, s);
-                s.setColor(on ? Color.argb(120, Color.red(acc), Color.green(acc), Color.blue(acc))
-                              : Color.argb(36, 255, 255, 255));
-                c.drawLine(x0, y - u * 0.002f, x1, y - u * 0.002f, s);
+            s.setStrokeWidth(u * 0.006f);
+            float x0 = r.left + r.width() * 0.26f, x1 = r.right - r.width() * 0.26f;
+            float y0 = r.top + r.height() * 0.34f, y1 = r.bottom - r.height() * 0.28f;
+            s.setColor(on ? Theme.alpha(accent(), 140) : Color.argb(26, 255, 255, 255));
+            for (int i = 0; i < 4; i++) {
+                float y = y0 + (y1 - y0) * i / 3f;
+                c.drawLine(x0, y, x1, y, s);
             }
             s.setStrokeCap(Paint.Cap.BUTT);
-            t.setTypeface(bold);
-            t.setLetterSpacing(0.04f);
-            fit(b.a.label, u * 0.036f, r.width() * 0.86f);
-            t.setColor(on ? Color.WHITE : LABEL);
-            if (on) t.setShadowLayer(u * 0.02f, 0, 0, acc);
+            t.setTypeface(Theme.MEDIUM);
+            t.setLetterSpacing(0.05f);
+            fit(b.a.label, u * 0.034f, r.width() * 0.86f);
+            t.setColor(ink);
             c.drawText(b.a.label, cx, r.top + r.height() * 0.17f - (t.ascent() + t.descent()) / 2f, t);
-            t.clearShadowLayer();
             t.setLetterSpacing(0f);
-            drawBadge(c, key, keyCol, cx, r.bottom - r.height() * 0.10f, u * 0.03f);
+            drawBadge(c, key, keyCol, cx, r.bottom - r.height() * 0.10f, u * 0.028f);
             c.restore();
         } else {
             float rad = r.height() / 2f;
-            drawCap(c, r, PILL, on, rad);
-            // Touche à droite, libellé centré dans la place restante
-            float bs = r.height() * 0.3f, bw = badgeWidth(key, bs);
+            drawCap(c, r, PILL, k, rad);
+            float bs = r.height() * 0.28f, bw = badgeWidth(key, bs);
             float bx = r.right - rad * 0.3f - bw / 2f;
             float x0 = r.left + rad * 0.45f, x1 = bx - bw / 2f - rad * 0.2f;
-            t.setTypeface(bold);
+            t.setTypeface(Theme.MEDIUM);
             fit(b.a.label, r.height() * 0.36f, x1 - x0);
-            t.setColor(on ? Color.WHITE : LABEL);
-            if (on) t.setShadowLayer(u * 0.015f, 0, 0, acc);
+            t.setColor(ink);
             c.drawText(b.a.label, (x0 + x1) / 2f, cy - (t.ascent() + t.descent()) / 2f, t);
-            t.clearShadowLayer();
             drawBadge(c, key, keyCol, bx, cy, bs);
         }
     }
 
     private float badgeWidth(String key, float size) {
-        t.setTypeface(bold);
+        t.setTypeface(Theme.MEDIUM);
         t.setTextSize(size);
         return Math.max(t.measureText(key), size * 0.9f) + size * 0.8f;
     }
 
     /** Pastille de la touche de manette assignée (« RT », « A »…). */
     private void drawBadge(Canvas c, String key, int col, float cx, float cy, float size) {
-        t.setTypeface(bold);
+        t.setTypeface(Theme.MEDIUM);
         t.setTextSize(size);
         float tw = Math.max(t.measureText(key), size * 0.9f);
         float bh = size * 1.45f, bw = tw + size * 0.8f;
         p.setShader(null);
-        p.setColor(Color.argb(200, 8, 9, 11));
+        p.setColor(Color.argb(150, 0, 0, 0));
         c.drawRoundRect(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, bh / 2, bh / 2, p);
-        s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.003f);
-        s.setColor(Color.argb(70, 255, 255, 255));
-        c.drawRoundRect(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, bh / 2, bh / 2, s);
         t.setColor(col);
         c.drawText(key, cx, cy - (t.ascent() + t.descent()) / 2f, t);
     }
@@ -756,64 +691,51 @@ public class GtaView extends View implements SensorEventListener {
         RectF r = b.r;
         boolean lit = b.tiltSwitch ? keys.tilt() : b.pressed;
         boolean disabled = !b.tiltSwitch && !listening;
-        drawCap(c, r, PILL, b.pressed, r.height() / 2f);
+        drawCap(c, r, PILL, b.pressed ? 1f : 0f, r.height() / 2f);
         float cy = r.centerY();
         String txt = b.tiltSwitch ? "Inclinaison" : "Recentrer";
-        t.setTypeface(bold);
+        t.setTypeface(Theme.MEDIUM);
         if (b.tiltSwitch) {
-            // Voyant ON/OFF à gauche
             float lx = r.left + r.height() * 0.45f, lr = r.height() * 0.12f;
             p.setShader(null);
-            p.setColor(lit ? AMBER : Color.rgb(60, 50, 36));
-            if (lit) p.setShadowLayer(u * 0.015f, 0, 0, AMBER);
+            p.setColor(lit ? Theme.AMBER : Theme.FAINT);
             c.drawCircle(lx, cy, lr, p);
-            p.clearShadowLayer();
             fit(txt, r.height() * 0.36f, r.width() - r.height() * 1.1f);
-            t.setColor(lit ? Color.WHITE : LABEL);
+            t.setColor(lit ? Theme.TEXT : Theme.DIM);
             c.drawText(txt, (lx + lr + r.right) / 2f, cy - (t.ascent() + t.descent()) / 2f, t);
         } else {
             fit(txt, r.height() * 0.36f, r.width() * 0.8f);
-            t.setColor(disabled ? Color.rgb(80, 84, 96) : b.pressed ? Color.WHITE : LABEL);
+            t.setColor(disabled ? Theme.FAINT : b.pressed ? Color.WHITE : Theme.TEXT);
             c.drawText(txt, r.centerX(), cy - (t.ascent() + t.descent()) / 2f, t);
         }
     }
 
+    /** Contrôle segmenté « À PIED | EN VOITURE ». */
     private void drawSwitch(Canvas c, ModeSwitch m) {
         RectF r = m.r;
         float rad = r.height() / 2f;
-        // Rail creusé
-        p.setShader(new LinearGradient(0, r.top, 0, r.bottom,
-                Color.rgb(6, 7, 9), Color.rgb(30, 33, 40), Shader.TileMode.CLAMP));
-        c.drawRoundRect(r, rad, rad, p);
         p.setShader(null);
+        p.setColor(Theme.SURFACE);
+        c.drawRoundRect(r, rad, rad, p);
+        s.setShader(null);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(Color.BLACK);
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(Theme.HAIR);
         c.drawRoundRect(r, rad, rad, s);
-        // Curseur coloré sous le mode actif
         float in = u * 0.008f;
         boolean car = mode == GtaKeys.CAR;
-        RectF k = new RectF(car ? r.centerX() + in / 2 : r.left + in, r.top + in,
-                car ? r.right - in : r.centerX() - in / 2, r.bottom - in);
-        int acc = accent();
-        float kr = k.height() / 2f;
-        p.setShadowLayer(u * 0.025f, 0, 0, Color.argb(140, Color.red(acc), Color.green(acc), Color.blue(acc)));
-        p.setColor(acc);
-        c.drawRoundRect(k, kr, kr, p);
-        p.clearShadowLayer();
-        p.setShader(new LinearGradient(0, k.top, 0, k.bottom,
-                Color.argb(90, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.drawRoundRect(k.left, k.top, k.right, k.centerY(), kr, kr, p);
-        p.setShader(null);
-        // Libellés
-        t.setTypeface(bold);
-        t.setLetterSpacing(0.12f);
+        rr.set(car ? r.centerX() : r.left + in, r.top + in, car ? r.right - in : r.centerX(), r.bottom - in);
+        float kr = rr.height() / 2f;
+        p.setColor(accent());
+        c.drawRoundRect(rr, kr, kr, p);
+        t.setTypeface(Theme.MEDIUM);
+        t.setLetterSpacing(0.1f);
         float half = r.width() / 2f;
-        fit("EN VOITURE", r.height() * 0.36f, half * 0.78f);
+        fit("EN VOITURE", r.height() * 0.34f, half * 0.78f);
         float ty = r.centerY() - (t.ascent() + t.descent()) / 2f;
-        t.setColor(car ? LABEL_DIM : Color.rgb(12, 14, 20));
+        t.setColor(car ? Theme.DIM : Color.rgb(8, 8, 10));
         c.drawText("À PIED", r.left + half / 2f, ty, t);
-        t.setColor(car ? Color.rgb(20, 14, 6) : LABEL_DIM);
+        t.setColor(car ? Color.rgb(8, 8, 10) : Theme.DIM);
         c.drawText("EN VOITURE", r.centerX() + half / 2f, ty, t);
         t.setLetterSpacing(0f);
     }
@@ -821,45 +743,44 @@ public class GtaView extends View implements SensorEventListener {
     private void drawNav(Canvas c, NavBtn b) {
         RectF r = b.r;
         float cx = r.centerX(), cy = r.centerY(), rad = r.width() / 2f;
-        drawCap(c, r, ROUND, b.pressed, 0);
-        int ink = b.pressed ? accent() : LABEL;
+        drawCap(c, r, ROUND, b.pressed ? 1f : 0f, 0);
+        int ink = b.pressed ? Color.WHITE : Theme.TEXT;
         s.setStyle(Paint.Style.STROKE);
         s.setColor(ink);
         s.setStrokeCap(Paint.Cap.ROUND);
+        s.setStrokeJoin(Paint.Join.ROUND);
         if (b.back) {
-            // Chevron « retour »
             s.setStrokeWidth(u * 0.007f);
             float q = rad * 0.32f;
             Path ch = new Path();
             ch.moveTo(cx + q * 0.4f, cy - q);
             ch.lineTo(cx - q * 0.6f, cy);
             ch.lineTo(cx + q * 0.4f, cy + q);
-            s.setStrokeJoin(Paint.Join.ROUND);
             c.drawPath(ch, s);
-            s.setStrokeJoin(Paint.Join.MITER);
         } else {
-            // Roue dentée (comme la manette)
-            s.setStrokeWidth(u * 0.005f);
-            c.drawCircle(cx, cy, rad * 0.3f, s);
-            for (int i = 0; i < 8; i++) {
-                double a = Math.PI / 4 * i;
-                c.drawLine(cx + (float) Math.cos(a) * rad * 0.43f, cy + (float) Math.sin(a) * rad * 0.43f,
-                        cx + (float) Math.cos(a) * rad * 0.6f, cy + (float) Math.sin(a) * rad * 0.6f, s);
-            }
+            // Touches : réglages à curseurs
+            s.setStrokeWidth(u * 0.0055f);
+            float q = rad * 0.5f;
+            c.drawLine(cx - q, cy - q * 0.55f, cx + q, cy - q * 0.55f, s);
+            c.drawLine(cx - q, cy + q * 0.55f, cx + q, cy + q * 0.55f, s);
+            p.setShader(null);
+            p.setColor(ink);
+            c.drawCircle(cx + q * 0.3f, cy - q * 0.55f, rad * 0.14f, p);
+            c.drawCircle(cx - q * 0.3f, cy + q * 0.55f, rad * 0.14f, p);
         }
         s.setStrokeCap(Paint.Cap.BUTT);
-        // Légende sous le bouton
-        t.setTypeface(regular);
+        s.setStrokeJoin(Paint.Join.MITER);
+        t.setTypeface(Theme.MEDIUM);
         t.setTextSize(u * 0.02f);
         t.setLetterSpacing(0.12f);
-        t.setColor(LABEL_DIM);
+        t.setColor(Theme.DIM);
         c.drawText(b.back ? "CONNEXION" : "TOUCHES", cx, r.bottom + u * 0.032f, t);
         t.setLetterSpacing(0f);
     }
 
     private void drawStick(Canvas c, Stick st) {
         float travel = u * 0.05f;
-        float kx = listening ? tiltX : st.kx;
+        float kx = leftX();
         float cx = st.cx + kx * travel, cy = st.cy + st.ky * travel;
         float r = u * 0.105f;
         int acc = accent();
@@ -871,53 +792,36 @@ public class GtaView extends View implements SensorEventListener {
             RectF ov = new RectF(st.cx - ar, st.cy - ar, st.cx + ar, st.cy + ar);
             s.setStyle(Paint.Style.STROKE);
             s.setStrokeCap(Paint.Cap.ROUND);
-            s.setStrokeWidth(u * 0.012f);
-            s.setColor(Color.argb(120, 0, 0, 0));
+            s.setStrokeWidth(u * 0.01f);
+            s.setColor(Theme.alpha(Color.WHITE, 30));
             c.drawArc(ov, 230, 80, false, s);
             s.setColor(acc);
-            s.setShadowLayer(u * 0.012f, 0, 0, acc);
             float sweep = tiltX * 40f;
             if (Math.abs(sweep) < 1.5f) c.drawArc(ov, 269, 2, false, s);
             else c.drawArc(ov, 270, sweep, false, s);
-            s.clearShadowLayer();
             s.setStrokeCap(Paint.Cap.BUTT);
         }
 
         p.setShader(null);
-        p.setColor(Color.argb(190, 0, 0, 0));
-        c.drawCircle(cx, cy + u * 0.012f, r * 1.02f, p);
         if (lit) {
-            p.setShader(new RadialGradient(cx, cy, r * 1.6f,
-                    Color.argb(110, Color.red(acc), Color.green(acc), Color.blue(acc)),
-                    Color.argb(0, Color.red(acc), Color.green(acc), Color.blue(acc)), Shader.TileMode.CLAMP));
-            c.drawCircle(cx, cy, r * 1.6f, p);
+            p.setColor(Theme.alpha(acc, 60));
+            c.drawCircle(cx, cy, r * 1.35f, p);
         }
-        p.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.rgb(62, 66, 76), Color.rgb(16, 17, 21), Shader.TileMode.CLAMP));
+        p.setColor(Theme.SURFACE_HI);
         c.drawCircle(cx, cy, r, p);
         s.setShader(null);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(Color.argb(150, 0, 0, 0));
-        for (int i = 0; i < 40; i++) {
-            double a = Math.PI * 2 * i / 40;
-            float cs = (float) Math.cos(a), sn = (float) Math.sin(a);
-            c.drawLine(cx + cs * r * 0.8f, cy + sn * r * 0.8f, cx + cs * r * 0.97f, cy + sn * r * 0.97f, s);
-        }
-        float ir = r * 0.74f;
-        p.setShader(new LinearGradient(0, cy - ir, 0, cy + ir,
-                Color.rgb(12, 13, 16), Color.rgb(48, 52, 60), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, ir, p);
-        p.setShader(null);
-        s.setColor(lit ? acc : Color.rgb(8, 8, 10));
-        s.setStrokeWidth(u * (lit ? 0.006f : 0.004f));
+        s.setStrokeWidth(u * (lit ? 0.006f : 0.0035f));
+        s.setColor(lit ? acc : Theme.HAIR);
         c.drawCircle(cx, cy, r, s);
-        s.setColor(Color.argb(40, 255, 255, 255));
+        p.setColor(lit ? Theme.alpha(acc, 70) : Theme.SURFACE);
+        c.drawCircle(cx, cy, r * 0.58f, p);
         s.setStrokeWidth(u * 0.003f);
-        c.drawCircle(cx, cy, ir, s);
+        s.setColor(Theme.HAIR);
+        c.drawCircle(cx, cy, r * 0.58f, s);
         if (listening) {
-            t.setTypeface(bold);
-            t.setTextSize(u * 0.02f);
+            t.setTypeface(Theme.MEDIUM);
+            t.setTextSize(u * 0.019f);
             t.setLetterSpacing(0.1f);
             t.setColor(acc);
             c.drawText("INCLINAISON", cx, cy - (t.ascent() + t.descent()) / 2f, t);
@@ -934,43 +838,22 @@ public class GtaView extends View implements SensorEventListener {
         c.clipRect(cp.r);
         s.setStyle(Paint.Style.STROKE);
         s.setStrokeWidth(u * 0.004f);
-        s.setColor(Color.argb(110, Color.red(acc), Color.green(acc), Color.blue(acc)));
+        s.setColor(Theme.alpha(acc, 110));
         c.drawCircle(cp.ox, cp.oy, range, s);
-        s.setStrokeWidth(u * 0.006f);
+        s.setStrokeWidth(u * 0.005f);
         s.setColor(acc);
         c.drawLine(cp.ox, cp.oy, hx, hy, s);
-        p.setShader(new RadialGradient(hx, hy, u * 0.07f,
-                Color.argb(150, Color.red(acc), Color.green(acc), Color.blue(acc)),
-                Color.argb(0, Color.red(acc), Color.green(acc), Color.blue(acc)), Shader.TileMode.CLAMP));
-        c.drawCircle(hx, hy, u * 0.07f, p);
         p.setShader(null);
+        p.setColor(Theme.alpha(acc, 70));
+        c.drawCircle(hx, hy, u * 0.05f, p);
         p.setColor(acc);
         c.drawCircle(hx, hy, u * 0.018f, p);
         c.restore();
     }
 
-    private void drawLeds(Canvas c) {
-        boolean blinkOn = (SystemClock.uptimeMillis() / 500) % 2 == 0;
-        float lw = u * 0.024f, lh = u * 0.011f;
-        for (int i = 0; i < 4; i++) {
-            boolean lit = connected ? i == 0 : blinkOn;
-            float x = ledX + (i - 1.5f) * u * 0.045f;
-            p.setShader(null);
-            p.setColor(lit ? LED_ON : LED_OFF);
-            if (lit) p.setShadowLayer(u * 0.018f, 0, 0, LED_ON);
-            c.drawRoundRect(x - lw / 2, ledY - lh / 2, x + lw / 2, ledY + lh / 2, lh / 2, lh / 2, p);
-            p.clearShadowLayer();
-        }
-    }
-
     private void drawStatus(Canvas c) {
-        if (status.isEmpty()) return;
-        t.setTypeface(regular);
-        t.setTextSize(u * 0.026f);
-        t.setColor(connected ? Color.rgb(150, 190, 240) : Color.rgb(140, 146, 160));
-        float max = u * 0.7f;
-        CharSequence line = TextUtils.ellipsize(status, t, max, TextUtils.TruncateAt.END);
-        c.drawText(line, 0, line.length(), getWidth() * 0.5f, ledY + u * 0.033f, t);
+        boolean beat = (SystemClock.uptimeMillis() / 500) % 2 == 0;
+        Theme.statusPill(c, p, s, t, status, connected, beat, getWidth() * 0.5f, ledY, u * 0.025f, u * 0.8f);
     }
 
     // ================= Toucher =================

@@ -118,6 +118,6 @@ Package `com.dynamicagence.icontroller`, dans `app/src/main/java/…` :
 
 ## Version
 
-v0.3 (versionCode 3), `minSdk 28`, `targetSdk 34`.
+v0.3.1 (versionCode 4), `minSdk 28`, `targetSdk 34`.
 
 Réalisation : By Ligrade

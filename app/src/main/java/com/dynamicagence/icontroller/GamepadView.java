@@ -24,23 +24,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Manette tactile façon DualShock 3 (corps noir laqué, sticks symétriques en bas,
- * croix en 4 flèches, voyants 1-4) avec la disposition et les couleurs de touches Xbox.
+ * Manette tactile : disposition à deux sticks symétriques, croix en 4 flèches, touches aux
+ * couleurs Xbox. Surfaces mates sur fond noir, filets fins, un seul accent bleu.
  */
 public class GamepadView extends View {
 
     public interface MenuListener { void onMenu(); }
 
-    // Palette
-    private static final int GLOW = Color.rgb(127, 184, 255);
-    private static final int LABEL = Color.rgb(200, 204, 212);
-    private static final int LABEL_DIM = Color.rgb(120, 126, 138);
-    private static final int LED_ON = Color.rgb(255, 59, 48);
-    private static final int LED_OFF = Color.rgb(48, 22, 22);
-    private static final int A_COL = Color.rgb(96, 196, 46);
-    private static final int B_COL = Color.rgb(230, 62, 66);
-    private static final int X_COL = Color.rgb(54, 132, 230);
-    private static final int Y_COL = Color.rgb(242, 196, 30);
+    private static final int A_COL = Theme.KA;
+    private static final int B_COL = Theme.KB;
+    private static final int X_COL = Theme.KX;
+    private static final int Y_COL = Theme.KY;
 
     private final HidGamepad pad;
     private MenuListener menuListener;
@@ -50,13 +44,10 @@ public class GamepadView extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint s = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private final Typeface bold = Typeface.create("sans-serif-medium", Typeface.BOLD);
-    private final Typeface regular = Typeface.create("sans-serif", Typeface.NORMAL);
 
     private static final boolean DEBUG_HITS = false; // dessine les zones tactiles (mise au point)
 
     private Bitmap body;   // coque pré-rendue, transparente autour (perf sur vieux téléphone)
-    private Shader bgShader;
     private float u;       // unité de taille
 
     // ================= Contrôles =================
@@ -75,7 +66,7 @@ public class GamepadView extends View {
         final int bit, kind, color; final String label;
         final RectF r = new RectF();
         boolean pressed;
-        Shader shade;
+        float glow;
         Btn(int bit, int kind, String label, int color) {
             this.bit = bit; this.kind = kind; this.label = label; this.color = color;
         }
@@ -100,7 +91,7 @@ public class GamepadView extends View {
             pressed = on;
             if (bit >= 0) pad.setButton(bit, on);
             else if (on && menuListener != null) menuListener.onMenu();
-            if (on) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            performHapticFeedback(on ? HapticFeedbackConstants.KEYBOARD_TAP : HapticFeedbackConstants.KEYBOARD_RELEASE);
             invalidate();
         }
         void draw(Canvas c) {
@@ -222,11 +213,6 @@ public class GamepadView extends View {
         circle(bA, fx, fy + sp, br);
         circle(bX, fx - sp, fy, br);
         circle(bB, fx + sp, fy, br);
-        for (Btn b : new Btn[]{bA, bB, bX, bY}) {
-            b.shade = new RadialGradient(b.r.centerX() - br * 0.35f, b.r.centerY() - br * 0.45f, br * 1.5f,
-                    new int[]{Color.rgb(70, 74, 84), Color.rgb(30, 32, 37), Color.rgb(14, 15, 18)},
-                    new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
-        }
 
         left.cx = w * 0.355f; left.cy = h * 0.71f; left.range = u * 0.15f;
         right.cx = w * 0.645f; right.cy = h * 0.71f; right.range = u * 0.15f;
@@ -238,135 +224,64 @@ public class GamepadView extends View {
         circle(bLS, w * 0.095f, h * 0.81f, u * 0.048f);
         circle(bRS, w * 0.905f, h * 0.81f, u * 0.048f);
 
-        ledX = w * 0.5f; ledY = h * 0.225f;
+        ledX = w * 0.5f; ledY = h * 0.2f;
 
         if (body != null) body.recycle();
-        body = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        body = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
         renderBody(new Canvas(body), w, h);
     }
 
     private static void circle(Btn b, float cx, float cy, float r) { b.r.set(cx - r, cy - r, cx + r, cy + r); }
 
-    private Path bodyPath(int w, int h) {
-        Path b = new Path();
-        b.moveTo(w * 0.22f, h * 0.14f);
-        b.quadTo(w * 0.5f, h * 0.10f, w * 0.78f, h * 0.14f);
-        b.cubicTo(w * 0.92f, h * 0.155f, w * 0.99f, h * 0.27f, w * 0.99f, h * 0.50f);
-        b.cubicTo(w * 0.99f, h * 0.75f, w * 0.985f, h * 1.03f, w * 0.895f, h * 1.03f);
-        b.cubicTo(w * 0.835f, h * 1.03f, w * 0.80f, h * 0.985f, w * 0.765f, h * 0.95f);
-        b.cubicTo(w * 0.70f, h * 0.935f, w * 0.62f, h * 0.965f, w * 0.5f, h * 0.965f);
-        b.cubicTo(w * 0.38f, h * 0.965f, w * 0.30f, h * 0.935f, w * 0.235f, h * 0.95f);
-        b.cubicTo(w * 0.20f, h * 0.985f, w * 0.165f, h * 1.03f, w * 0.105f, h * 1.03f);
-        b.cubicTo(w * 0.015f, h * 1.03f, w * 0.01f, h * 0.75f, w * 0.01f, h * 0.50f);
-        b.cubicTo(w * 0.01f, h * 0.27f, w * 0.08f, h * 0.155f, w * 0.22f, h * 0.14f);
-        b.close();
-        return b;
-    }
-
-    /** Fond + coque laquée + cuvettes. Dessiné une seule fois. */
+    /** Fond + cuvettes + libellés fixes. Dessiné une seule fois (opaque). */
     private void renderBody(Canvas c, int w, int h) {
-        // Fond (dessiné à chaque image, sous les gâchettes)
-        bgShader = new RadialGradient(w * 0.5f, h * 0.45f, Math.max(w, h) * 0.7f,
-                Color.rgb(22, 23, 28), Color.rgb(4, 4, 5), Shader.TileMode.CLAMP);
-
-        Path shell = bodyPath(w, h);
-
-        // Ombre portée de la coque
-        p.setShader(null);
-        p.setColor(Color.argb(200, 0, 0, 0));
-        p.setShadowLayer(u * 0.05f, 0, u * 0.02f, Color.argb(220, 0, 0, 0));
-        c.drawPath(shell, p);
-        p.clearShadowLayer();
-
-        // Coque noir laqué
-        p.setShader(new LinearGradient(0, h * 0.1f, 0, h,
-                new int[]{Color.rgb(46, 49, 57), Color.rgb(24, 26, 31), Color.rgb(11, 12, 15)},
-                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
-        c.drawPath(shell, p);
-
-        // Reflet brillant en haut
-        c.save();
-        c.clipPath(shell);
-        p.setShader(new LinearGradient(0, h * 0.1f, 0, h * 0.45f,
-                Color.argb(46, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.drawOval(-w * 0.1f, -h * 0.25f, w * 1.1f, h * 0.48f, p);
-        // Liseré lumineux sur l'arête supérieure
-        p.setShader(null);
-        s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.006f);
-        s.setColor(Color.argb(55, 255, 255, 255));
-        c.translate(0, u * 0.004f);
-        c.drawPath(shell, s);
-        c.restore();
-
-        // Contour
-        s.setColor(Color.BLACK);
-        s.setStrokeWidth(u * 0.005f);
-        c.drawPath(shell, s);
-
-        // Cuvettes croix / touches
+        c.drawColor(Theme.BG);
+        // Cuvettes : croix, touches, sticks
         well(c, dpad.cx, dpad.cy, u * 0.215f);
         well(c, bA.r.centerX(), bX.r.centerY(), u * 0.215f);
-        // Cuvettes des sticks
         well(c, left.cx, left.cy, u * 0.155f);
         well(c, right.cx, right.cy, u * 0.155f);
 
-        // Petits libellés sous View / Menu
-        t.setTypeface(regular);
-        t.setTextSize(u * 0.024f);
-        t.setColor(LABEL_DIM);
-        t.setLetterSpacing(0.15f);
+        t.setTypeface(Theme.MEDIUM);
+        t.setTextSize(u * 0.023f);
+        t.setLetterSpacing(0.14f);
+        t.setColor(Theme.DIM);
         c.drawText("VIEW", bView.r.centerX(), bView.r.bottom + u * 0.04f, t);
         c.drawText("MENU", bMenuKey.r.centerX(), bMenuKey.r.bottom + u * 0.04f, t);
 
-        // Numéros des voyants
-        t.setTextSize(u * 0.02f);
-        for (int i = 0; i < 4; i++) c.drawText(String.valueOf(i + 1), ledPos(i), ledY - u * 0.022f, t);
-
         // Signature
-        t.setTypeface(bold);
-        t.setTextSize(u * 0.032f);
-        t.setLetterSpacing(0.35f);
-        t.setColor(Color.rgb(52, 56, 66));
-        c.drawText("SA CONTROLLER", w * 0.5f, h * 0.885f, t);
+        t.setTypeface(Theme.LIGHT);
+        t.setTextSize(u * 0.03f);
+        t.setLetterSpacing(0.42f);
+        t.setColor(Theme.FAINT);
+        c.drawText("SA CONTROLLER", w * 0.5f, h * 0.93f, t);
         t.setLetterSpacing(0f);
     }
 
     private void well(Canvas c, float cx, float cy, float r) {
-        p.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.rgb(6, 7, 9), Color.rgb(34, 37, 44), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, r, p);
         p.setShader(null);
-        s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.argb(200, 0, 0, 0), Color.argb(70, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, r, s);
+        p.setColor(Theme.WELL);
+        c.drawCircle(cx, cy, r, p);
         s.setShader(null);
+        s.setStyle(Paint.Style.STROKE);
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(Theme.HAIR);
+        c.drawCircle(cx, cy, r, s);
     }
-
-    private float ledPos(int i) { return ledX + (i - 1.5f) * u * 0.045f; }
 
     // ================= Dessin =================
 
     @Override protected void onDraw(Canvas c) {
         if (body == null) return;
-        p.setShader(bgShader);
-        c.drawRect(0, 0, getWidth(), getHeight(), p);
-        p.setShader(null);
-        // Les gâchettes passent sous la coque
-        for (Btn b : shoulders) drawShoulder(c, b);
         c.drawBitmap(body, 0, 0, null);
-
-        drawLeds(c);
         drawStatus(c);
-        for (int i = controls.size() - 1; i >= 0; i--) {
-            Control ctl = controls.get(i);
-            if (ctl instanceof Btn && ((Btn) ctl).kind == SHOULDER) continue;
-            ctl.draw(c);
-        }
+        for (int i = controls.size() - 1; i >= 0; i--) controls.get(i).draw(c);
         if (DEBUG_HITS) drawHits(c);
-        if (!connected) postInvalidateDelayed(500);
+        boolean fading = false;
+        for (Control ctl : controls)
+            if (ctl instanceof Btn && ((Btn) ctl).glow > 0f && !((Btn) ctl).pressed) { fading = true; break; }
+        if (fading) postInvalidateOnAnimation();
+        else if (!connected) postInvalidateDelayed(500);
     }
 
     private void drawHits(Canvas c) {
@@ -384,150 +299,121 @@ public class GamepadView extends View {
         p.setAlpha(255);
     }
 
+    /** Valeur d'animation : plein dès l'appui, retombe en quelques images au relâchement. */
+    private static float ease(Btn b) {
+        if (b.pressed) { b.glow = 1f; return 1f; }
+        if (b.glow > 0f) b.glow = Math.max(0f, b.glow - 0.16f);
+        return b.glow;
+    }
+
+    private final RectF rr = new RectF();
     private final Path shoulderPath = new Path();
 
     private void drawShoulder(Canvas c, Btn b) {
+        float k = ease(b);
         RectF r = b.r;
-        // Coin extérieur des gâchettes très arrondi, pour épouser l'épaule de la coque
-        float big = u * 0.1f, sm = u * 0.032f, bot = u * 0.02f;
+        float vis = u * 0.17f, big = u * 0.1f, sm = u * 0.03f, bot = u * 0.03f;
         float tl = b == bLT ? big : sm, tr = b == bRT ? big : sm;
+        rr.set(r.left, r.top + u * 0.012f, r.right, r.top + vis);
         shoulderPath.reset();
-        shoulderPath.addRoundRect(r, new float[]{tl, tl, tr, tr, bot, bot, bot, bot}, Path.Direction.CW);
-        float dy = b.pressed ? u * 0.014f : 0f;
-        c.save();
-        c.translate(0, dy);
-        boolean trig = b == bLT || b == bRT;
-        p.setShader(new LinearGradient(0, r.top, 0, r.top + u * 0.15f,
-                b.pressed ? new int[]{Color.rgb(30, 34, 44), Color.rgb(16, 18, 23)}
-                          : trig ? new int[]{Color.rgb(66, 70, 82), Color.rgb(22, 24, 29)}
-                                 : new int[]{Color.rgb(84, 88, 100), Color.rgb(30, 32, 38)},
-                null, Shader.TileMode.CLAMP));
-        c.drawPath(shoulderPath, p);
+        shoulderPath.addRoundRect(rr, new float[]{tl, tl, tr, tr, bot, bot, bot, bot}, Path.Direction.CW);
         p.setShader(null);
-        // Reflet sur l'arête haute
+        p.setColor(mix(Theme.SURFACE, Theme.alpha(Theme.BLUE, 255), k * 0.45f));
+        c.drawPath(shoulderPath, p);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.005f);
-        s.setShader(new LinearGradient(0, r.top, 0, r.top + u * 0.06f,
-                Color.argb(b.pressed ? 30 : 90, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP));
-        c.save();
-        c.translate(0, u * 0.003f);
+        s.setStrokeWidth(u * (k > 0.5f ? 0.005f : 0.0035f));
+        s.setColor(k > 0.5f ? Theme.BLUE : Theme.HAIR);
         c.drawPath(shoulderPath, s);
-        c.restore();
-        s.setShader(null);
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(b.pressed ? GLOW : Color.BLACK);
-        c.drawPath(shoulderPath, s);
-        // Libellé dans la partie visible (au-dessus de la coque)
-        t.setTypeface(bold);
-        t.setTextSize(u * 0.042f);
-        t.setColor(b.pressed ? GLOW : LABEL);
-        if (b.pressed) t.setShadowLayer(u * 0.015f, 0, 0, GLOW);
-        float ly = r.top + u * 0.065f;
-        c.drawText(b.label, r.centerX(), ly - (t.ascent() + t.descent()) / 2f, t);
-        t.clearShadowLayer();
-        c.restore();
+        t.setTypeface(Theme.MEDIUM);
+        t.setTextSize(u * 0.04f);
+        t.setLetterSpacing(0.06f);
+        t.setColor(mix(Theme.DIM, Color.WHITE, k));
+        c.drawText(b.label, rr.centerX(), rr.centerY() - (t.ascent() + t.descent()) / 2f, t);
+        t.setLetterSpacing(0f);
+    }
+
+    private static int mix(int a, int b, float k) {
+        k = Math.max(0f, Math.min(1f, k));
+        return Color.rgb((int) (Color.red(a) + (Color.red(b) - Color.red(a)) * k),
+                (int) (Color.green(a) + (Color.green(b) - Color.green(a)) * k),
+                (int) (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k));
     }
 
     private void drawFace(Canvas c, Btn b) {
+        float k = ease(b);
         float cx = b.r.centerX(), cy = b.r.centerY(), r = b.r.width() / 2f;
-        float lift = u * 0.008f;
-        if (b.pressed) {
-            // Halo de couleur
-            p.setShader(new RadialGradient(cx, cy, r * 1.9f,
-                    Color.argb(150, Color.red(b.color), Color.green(b.color), Color.blue(b.color)),
-                    Color.argb(0, Color.red(b.color), Color.green(b.color), Color.blue(b.color)),
-                    Shader.TileMode.CLAMP));
-            c.drawCircle(cx, cy, r * 1.9f, p);
-        } else {
+        if (k > 0f) { // halo doux
             p.setShader(null);
-            p.setColor(Color.argb(170, 0, 0, 0));
-            c.drawCircle(cx, cy + lift, r * 1.02f, p);
+            p.setColor(Theme.alpha(b.color, (int) (70 * k)));
+            c.drawCircle(cx, cy, r * (1.18f + 0.1f * k), p);
         }
-        float oy = b.pressed ? lift * 0.6f : 0f;
         c.save();
-        c.translate(0, oy);
-        if (b.pressed) c.scale(0.95f, 0.95f, cx, cy);
-        p.setShader(b.shade);
-        c.drawCircle(cx, cy, r, p);
+        c.scale(1f - 0.05f * k, 1f - 0.05f * k, cx, cy);
         p.setShader(null);
-        // Liseré
+        p.setColor(mix(Theme.SURFACE, b.color, k));
+        c.drawCircle(cx, cy, r, p);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(b.pressed ? b.color : Color.rgb(8, 8, 10));
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(k > 0.4f ? b.color : Theme.HAIR);
         c.drawCircle(cx, cy, r, s);
-        // Reflet
-        s.setColor(Color.argb(b.pressed ? 20 : 45, 255, 255, 255));
-        s.setStrokeWidth(u * 0.005f);
-        c.drawArc(cx - r * 0.8f, cy - r * 0.8f, cx + r * 0.8f, cy + r * 0.8f, 200, 140, false, s);
-        // Lettre
-        t.setTypeface(bold);
-        t.setTextSize(r * 1.05f);
-        t.setColor(b.pressed ? Color.WHITE : b.color);
-        if (b.pressed) t.setShadowLayer(r * 0.35f, 0, 0, b.color);
+        t.setTypeface(Theme.MEDIUM);
+        t.setTextSize(r * 1.0f);
+        t.setColor(mix(b.color, Theme.BG, k));
         c.drawText(b.label, cx, cy - (t.ascent() + t.descent()) / 2f, t);
-        t.clearShadowLayer();
         c.restore();
     }
 
     private void drawSmall(Canvas c, Btn b) {
+        float k = ease(b);
         float cx = b.r.centerX(), cy = b.r.centerY(), r = b.r.width() / 2f;
-        boolean on = b.pressed;
+        boolean home = "home".equals(b.label);
         p.setShader(null);
-        p.setColor(Color.argb(160, 0, 0, 0));
-        if (!on) c.drawCircle(cx, cy + u * 0.005f, r, p);
-        p.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                on ? new int[]{Color.rgb(24, 26, 32), Color.rgb(40, 44, 52)}
-                   : new int[]{Color.rgb(64, 68, 78), Color.rgb(22, 24, 29)},
-                null, Shader.TileMode.CLAMP));
+        p.setColor(mix(Theme.SURFACE, Theme.SURFACE_HI, k));
         c.drawCircle(cx, cy, r, p);
-        p.setShader(null);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
+        s.setStrokeWidth(u * 0.0035f);
+        s.setColor(k > 0.4f ? Theme.BLUE : Theme.HAIR);
+        c.drawCircle(cx, cy, r, s);
 
-        int ink = on ? GLOW : LABEL;
-        if ("home".equals(b.label)) {
-            // Bouton central : anneau lumineux quand connecté
-            int ring = connected || on ? GLOW : Color.rgb(70, 74, 84);
+        int ink = mix(Theme.DIM, Theme.BLUE, k);
+        s.setStrokeCap(Paint.Cap.ROUND);
+        s.setStrokeJoin(Paint.Join.ROUND);
+        if (home) {
+            int ring = connected ? Theme.GREEN : mix(Theme.FAINT, Theme.BLUE, k);
             s.setColor(ring);
-            s.setStrokeWidth(u * 0.007f);
-            if (connected || on) s.setShadowLayer(u * 0.02f, 0, 0, GLOW);
-            c.drawCircle(cx, cy, r * 0.62f, s);
-            s.clearShadowLayer();
+            s.setStrokeWidth(u * 0.006f);
+            c.drawCircle(cx, cy, r * 0.56f, s);
             p.setColor(ring);
-            c.drawCircle(cx, cy, r * 0.18f, p);
+            c.drawCircle(cx, cy, r * 0.17f, p);
         } else if ("view".equals(b.label)) {
             s.setColor(ink);
-            s.setStrokeWidth(u * 0.0045f);
+            s.setStrokeWidth(u * 0.0042f);
             float q = r * 0.3f;
             c.drawRoundRect(cx - q * 1.2f, cy - q * 1.1f, cx + q * 0.5f, cy + q * 0.35f, q * 0.25f, q * 0.25f, s);
             c.drawRoundRect(cx - q * 0.5f, cy - q * 0.35f, cx + q * 1.2f, cy + q * 1.1f, q * 0.25f, q * 0.25f, s);
         } else if ("menu".equals(b.label)) {
             s.setColor(ink);
-            s.setStrokeWidth(u * 0.0055f);
-            s.setStrokeCap(Paint.Cap.ROUND);
+            s.setStrokeWidth(u * 0.0052f);
             float q = r * 0.42f;
             for (int i = -1; i <= 1; i++) c.drawLine(cx - q, cy + i * q * 0.6f, cx + q, cy + i * q * 0.6f, s);
-            s.setStrokeCap(Paint.Cap.BUTT);
         } else if ("gear".equals(b.label)) {
             s.setColor(ink);
-            s.setStrokeWidth(u * 0.005f);
-            c.drawCircle(cx, cy, r * 0.32f, s);
-            s.setStrokeCap(Paint.Cap.ROUND);
-            for (int i = 0; i < 8; i++) {
-                double a = Math.PI / 4 * i;
-                c.drawLine(cx + (float) Math.cos(a) * r * 0.45f, cy + (float) Math.sin(a) * r * 0.45f,
-                        cx + (float) Math.cos(a) * r * 0.62f, cy + (float) Math.sin(a) * r * 0.62f, s);
-            }
-            s.setStrokeCap(Paint.Cap.BUTT);
+            // Retour à la connexion : trois traits « réglages »
+            s.setStrokeWidth(u * 0.0048f);
+            float q = r * 0.46f;
+            c.drawLine(cx - q, cy - q * 0.55f, cx + q, cy - q * 0.55f, s);
+            c.drawLine(cx - q, cy + q * 0.55f, cx + q, cy + q * 0.55f, s);
+            p.setColor(ink);
+            c.drawCircle(cx + q * 0.3f, cy - q * 0.55f, r * 0.14f, p);
+            c.drawCircle(cx - q * 0.3f, cy + q * 0.55f, r * 0.14f, p);
         } else {
-            t.setTypeface(bold);
-            t.setTextSize(r * 0.72f);
+            t.setTypeface(Theme.MEDIUM);
+            t.setTextSize(r * 0.68f);
             t.setColor(ink);
             c.drawText(b.label, cx, cy - (t.ascent() + t.descent()) / 2f, t);
         }
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(on ? GLOW : Color.BLACK);
-        c.drawCircle(cx, cy, r, s);
+        s.setStrokeCap(Paint.Cap.BUTT);
+        s.setStrokeJoin(Paint.Join.MITER);
     }
 
     private final Path dpadPiece = new Path();
@@ -549,41 +435,26 @@ public class GamepadView extends View {
         arrow.lineTo(-aw, ay + aw * 0.6f);
         arrow.close();
 
-        CornerPathEffect round = new CornerPathEffect(u * 0.012f);
+        CornerPathEffect round = new CornerPathEffect(u * 0.014f);
         for (int i = 0; i < 4; i++) {
             boolean on = d.on(i * 2);
             c.save();
             c.translate(d.cx, d.cy);
             c.rotate(90 * i);
-            // Ombre
             p.setPathEffect(round);
             p.setShader(null);
-            if (!on) {
-                p.setColor(Color.argb(170, 0, 0, 0));
-                c.save();
-                c.rotate(-90 * i);
-                c.translate(0, u * 0.008f);
-                c.rotate(90 * i);
-                c.drawPath(dpadPiece, p);
-                c.restore();
-            }
-            p.setShader(new LinearGradient(0, -arm, 0, -g,
-                    on ? new int[]{Color.rgb(30, 34, 42), Color.rgb(22, 24, 30)}
-                       : new int[]{Color.rgb(74, 78, 90), Color.rgb(28, 30, 36)},
-                    null, Shader.TileMode.CLAMP));
+            p.setColor(on ? Theme.alpha(Theme.BLUE, 255) : Theme.SURFACE);
+            if (on) p.setColor(mix(Theme.SURFACE, Theme.BLUE, 0.5f));
             c.drawPath(dpadPiece, p);
-            p.setShader(null);
             s.setPathEffect(round);
             s.setStyle(Paint.Style.STROKE);
-            s.setStrokeWidth(u * 0.004f);
-            s.setColor(on ? GLOW : Color.BLACK);
+            s.setStrokeWidth(u * (on ? 0.005f : 0.0035f));
+            s.setColor(on ? Theme.BLUE : Theme.HAIR);
             c.drawPath(dpadPiece, s);
             s.setPathEffect(null);
             p.setPathEffect(null);
-            p.setColor(on ? GLOW : Color.rgb(150, 156, 168));
-            if (on) p.setShadowLayer(u * 0.015f, 0, 0, GLOW);
+            p.setColor(on ? Color.WHITE : Theme.DIM);
             c.drawPath(arrow, p);
-            p.clearShadowLayer();
             c.restore();
         }
     }
@@ -592,65 +463,29 @@ public class GamepadView extends View {
         float travel = u * 0.05f;
         float cx = st.cx + st.kx * travel, cy = st.cy + st.ky * travel;
         float r = u * 0.105f;
-        // Ombre
         p.setShader(null);
-        p.setColor(Color.argb(190, 0, 0, 0));
-        c.drawCircle(cx, cy + u * 0.012f, r * 1.02f, p);
         if (st.active) {
-            p.setShader(new RadialGradient(cx, cy, r * 1.6f,
-                    Color.argb(110, 127, 184, 255), Color.argb(0, 127, 184, 255), Shader.TileMode.CLAMP));
-            c.drawCircle(cx, cy, r * 1.6f, p);
+            p.setColor(Theme.alpha(Theme.BLUE, 60));
+            c.drawCircle(cx, cy, r * 1.35f, p);
         }
-        // Bord caoutchouc
-        p.setShader(new LinearGradient(0, cy - r, 0, cy + r,
-                Color.rgb(62, 66, 76), Color.rgb(16, 17, 21), Shader.TileMode.CLAMP));
+        p.setColor(Theme.SURFACE_HI);
         c.drawCircle(cx, cy, r, p);
-        // Stries
         s.setShader(null);
         s.setStyle(Paint.Style.STROKE);
-        s.setStrokeWidth(u * 0.004f);
-        s.setColor(Color.argb(150, 0, 0, 0));
-        for (int i = 0; i < 40; i++) {
-            double a = Math.PI * 2 * i / 40;
-            float cs = (float) Math.cos(a), sn = (float) Math.sin(a);
-            c.drawLine(cx + cs * r * 0.8f, cy + sn * r * 0.8f, cx + cs * r * 0.97f, cy + sn * r * 0.97f, s);
-        }
-        // Creux central (concave : sombre en haut, clair en bas)
-        float ir = r * 0.74f;
-        p.setShader(new LinearGradient(0, cy - ir, 0, cy + ir,
-                Color.rgb(12, 13, 16), Color.rgb(48, 52, 60), Shader.TileMode.CLAMP));
-        c.drawCircle(cx, cy, ir, p);
-        p.setShader(null);
-        s.setColor(st.active ? GLOW : Color.rgb(8, 8, 10));
-        s.setStrokeWidth(u * (st.active ? 0.006f : 0.004f));
+        s.setStrokeWidth(u * (st.active ? 0.006f : 0.0035f));
+        s.setColor(st.active ? Theme.BLUE : Theme.HAIR);
         c.drawCircle(cx, cy, r, s);
-        s.setColor(Color.argb(40, 255, 255, 255));
+        // Disque intérieur
+        p.setColor(st.active ? Theme.alpha(Theme.BLUE, 70) : Theme.SURFACE);
+        c.drawCircle(cx, cy, r * 0.58f, p);
         s.setStrokeWidth(u * 0.003f);
-        c.drawCircle(cx, cy, ir, s);
-    }
-
-    private void drawLeds(Canvas c) {
-        boolean blinkOn = (SystemClock.uptimeMillis() / 500) % 2 == 0;
-        float lw = u * 0.024f, lh = u * 0.011f;
-        for (int i = 0; i < 4; i++) {
-            boolean lit = connected ? i == 0 : blinkOn;
-            float x = ledPos(i);
-            p.setShader(null);
-            p.setColor(lit ? LED_ON : LED_OFF);
-            if (lit) p.setShadowLayer(u * 0.018f, 0, 0, LED_ON);
-            c.drawRoundRect(x - lw / 2, ledY - lh / 2, x + lw / 2, ledY + lh / 2, lh / 2, lh / 2, p);
-            p.clearShadowLayer();
-        }
+        s.setColor(Theme.HAIR);
+        c.drawCircle(cx, cy, r * 0.58f, s);
     }
 
     private void drawStatus(Canvas c) {
-        if (status.isEmpty()) return;
-        t.setTypeface(regular);
-        t.setTextSize(u * 0.028f);
-        t.setColor(connected ? Color.rgb(150, 190, 240) : Color.rgb(140, 146, 160));
-        float max = getWidth() * 0.4f;
-        CharSequence line = TextUtils.ellipsize(status, t, max, TextUtils.TruncateAt.END);
-        c.drawText(line, 0, line.length(), getWidth() * 0.5f, ledY + u * 0.07f, t);
+        boolean beat = (SystemClock.uptimeMillis() / 500) % 2 == 0;
+        Theme.statusPill(c, p, s, t, status, connected, beat, getWidth() * 0.5f, ledY, u * 0.027f, getWidth() * 0.3f);
     }
 
     // ================= Toucher =================

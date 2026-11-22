@@ -17,6 +17,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -53,10 +54,12 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setStatusBarColor(Theme.BG);
+        getWindow().setNavigationBarColor(Theme.BG);
         pad = new HidGamepad(this, this);
 
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(14, 15, 18));
+        root.setBackgroundColor(Theme.BG);
         setupScreen = buildSetup();
         padView = new GamepadView(this, pad);
         padView.setMenuListener(this::showSetup);
@@ -145,103 +148,152 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     // ---- Écran de connexion ----
 
+    private View statusDot;
+
+    /** Deux colonnes en paysage : identité + connexion à gauche, choix de l'écran + appareils à droite. */
     private View buildSetup() {
-        ScrollView sv = new ScrollView(this);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        int p = dp(20);
-        col.setPadding(p, p, p, p);
-        sv.addView(col);
+        LinearLayout split = new LinearLayout(this);
+        split.setOrientation(LinearLayout.HORIZONTAL);
+        split.setBackgroundColor(Theme.BG);
 
-        TextView title = text("SA Controller", 26, true);
-        col.addView(title);
-        TextView sub = text("Ton téléphone devient une manette Bluetooth.", 14, false);
-        sub.setTextColor(Color.rgb(150, 156, 170));
-        col.addView(sub);
+        // ---- Gauche ----
+        ScrollView lsv = new ScrollView(this);
+        lsv.setFillViewport(true);
+        lsv.setVerticalScrollBarEnabled(false);
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setPadding(dp(32), dp(24), dp(20), dp(24));
+        lsv.addView(left);
 
-        statusText = text("Démarrage…", 15, false);
-        statusText.setTextColor(Color.rgb(64, 156, 255));
-        statusText.setPadding(0, dp(14), 0, dp(14));
-        col.addView(statusText);
+        TextView title = text("SA Controller", 34, Theme.LIGHT, Theme.TEXT);
+        title.setLetterSpacing(-0.01f);
+        left.addView(title);
+        TextView sub = text("Ton téléphone devient une manette Bluetooth.", 15, Theme.REGULAR, Theme.DIM);
+        sub.setPadding(0, dp(4), 0, dp(22));
+        left.addView(sub);
 
-        LinearLayout screens = new LinearLayout(this);
-        screens.setOrientation(LinearLayout.HORIZONTAL);
-        screens.addView(screenCard("Manette", "Toutes les touches, façon console", Color.rgb(64, 156, 255),
-                v -> showPad()));
-        screens.addView(screenCard("GTA San Andreas", "Boutons par action · à pied / en voiture",
-                Color.rgb(255, 174, 66), v -> showGta()));
-        col.addView(screens);
+        LinearLayout status = new LinearLayout(this);
+        status.setOrientation(LinearLayout.HORIZONTAL);
+        status.setGravity(Gravity.CENTER_VERTICAL);
+        statusDot = new View(this);
+        statusDot.setBackground(dot(Theme.AMBER));
+        status.addView(statusDot, new LinearLayout.LayoutParams(dp(9), dp(9)));
+        statusText = text("Démarrage…", 15, Theme.REGULAR, Theme.TEXT);
+        statusText.setPadding(dp(10), 0, 0, 0);
+        status.addView(statusText);
+        left.addView(status);
 
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(12), 0, 0);
-        row.addView(action("Rendre visible", false, v -> makeDiscoverable()));
-        row.addView(action("Chercher", false, v -> scan()));
-        row.addView(action("Déconnecter", false, v -> pad.disconnect()));
-        col.addView(row);
+        View spacer = new View(this);
+        left.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
 
-        TextView help = text("1. Sur la TV ou le Mac, ouvre les réglages Bluetooth.\n"
-                + "2. Ici, touche « Chercher », puis touche le nom de la TV / du Mac (ou « Rendre visible » "
-                + "et associe le téléphone depuis la TV).\n"
-                + "3. Une fois « Connecté », choisis « Manette » ou « GTA San Andreas ».", 13, false);
-        help.setTextColor(Color.rgb(150, 156, 170));
-        help.setPadding(0, dp(14), 0, dp(8));
-        col.addView(help);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setPadding(0, dp(22), 0, 0);
+        actions.addView(action("Chercher un appareil", true, v -> scan()));
+        actions.addView(action("Rendre visible", false, v -> makeDiscoverable()));
+        actions.addView(action("Déconnecter", false, v -> pad.disconnect()));
+        left.addView(actions);
+        split.addView(lsv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.9f));
 
-        TextView listTitle = text("Appareils", 16, true);
-        listTitle.setPadding(0, dp(8), 0, dp(6));
-        col.addView(listTitle);
+        // Filet vertical
+        View hair = new View(this);
+        hair.setBackgroundColor(Theme.HAIR);
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT);
+        hl.topMargin = dp(24); hl.bottomMargin = dp(24);
+        split.addView(hair, hl);
+
+        // ---- Droite ----
+        ScrollView rsv = new ScrollView(this);
+        rsv.setVerticalScrollBarEnabled(false);
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
+        right.setPadding(dp(24), dp(24), dp(32), dp(24));
+        rsv.addView(right);
+
+        right.addView(label("JOUER"));
+        right.addView(screenTile(Glyph.PAD, "Manette", "Toutes les touches, façon console",
+                Theme.BLUE, v -> showPad()));
+        right.addView(screenTile(Glyph.WHEEL, "GTA San Andreas", "Actions nommées · à pied et en voiture",
+                Theme.AMBER, v -> showGta()));
+
+        TextView listTitle = label("APPAREILS");
+        listTitle.setPadding(dp(2), dp(22), 0, dp(8));
+        right.addView(listTitle);
         deviceList = new LinearLayout(this);
         deviceList.setOrientation(LinearLayout.VERTICAL);
-        col.addView(deviceList);
-        return sv;
+        right.addView(deviceList);
+
+        TextView help = text("1  Ouvre les réglages Bluetooth de la TV ou du Mac.\n"
+                + "2  Touche « Chercher un appareil », puis le nom de la TV ou du Mac. "
+                + "Ou « Rendre visible », et associe le téléphone depuis la TV.\n"
+                + "3  Une fois connecté, choisis Manette ou GTA San Andreas.", 13, Theme.REGULAR, Theme.DIM);
+        help.setLineSpacing(0, 1.25f);
+        help.setPadding(dp(2), dp(22), 0, 0);
+        right.addView(help);
+        split.addView(rsv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.1f));
+        return split;
     }
 
-    private TextView text(String s, int sp, boolean bold) {
+    private GradientDrawable dot(int color) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(color);
+        return g;
+    }
+
+    private TextView text(String s, int sp, Typeface face, int color) {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
-        t.setTextColor(Color.rgb(230, 233, 240));
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTextColor(color);
+        t.setTypeface(face);
+        return t;
+    }
+
+    private TextView label(String s) {
+        TextView t = text(s, 11, Theme.MEDIUM, Theme.DIM);
+        t.setLetterSpacing(0.16f);
+        t.setPadding(dp(2), 0, 0, dp(8));
         return t;
     }
 
     private TextView action(String label, boolean primary, View.OnClickListener l) {
-        TextView t = text(label, 14, true);
+        TextView t = text(label, 15, Theme.MEDIUM, primary ? Color.WHITE : Theme.TEXT);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(16), dp(12), dp(16), dp(12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(22));
-        bg.setColor(primary ? Color.rgb(64, 156, 255) : Color.rgb(38, 41, 50));
-        t.setBackground(bg);
+        t.setMinHeight(dp(46));
+        t.setPadding(dp(18), dp(10), dp(18), dp(10));
+        t.setBackground(Theme.surface(primary ? Theme.BLUE : Theme.SURFACE, Theme.HAIR, dp(23), primary ? 0 : 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(10);
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(10);
         t.setLayoutParams(lp);
-        t.setOnClickListener(l);
+        t.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); l.onClick(v); });
         return t;
     }
 
-    /** Grande carte de choix d'écran. */
-    private View screenCard(String title, String sub, int color, View.OnClickListener l) {
+    /** Grande ligne de choix d'écran : pictogramme, titre, sous-titre, chevron. */
+    private View screenTile(int glyph, String title, String sub, int color, View.OnClickListener l) {
         LinearLayout c = new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(18), dp(14), dp(18), dp(14));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(16));
-        bg.setColor(Color.rgb(26, 28, 34));
-        bg.setStroke(dp(2), color);
-        c.setBackground(bg);
-        TextView t = text(title, 18, true);
-        t.setTextColor(color);
-        c.addView(t);
-        TextView st = text(sub, 13, false);
-        st.setTextColor(Color.rgb(150, 156, 170));
-        c.addView(st);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.rightMargin = dp(10);
+        c.setOrientation(LinearLayout.HORIZONTAL);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(dp(18), dp(14), dp(14), dp(14));
+        c.setMinimumHeight(dp(84));
+        c.setBackground(Theme.surface(Theme.SURFACE, Theme.HAIR, dp(20), 1));
+        c.addView(new Glyph(this, glyph, color), new LinearLayout.LayoutParams(dp(36), dp(36)));
+        LinearLayout tx = new LinearLayout(this);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        tx.setPadding(dp(16), 0, dp(8), 0);
+        tx.addView(text(title, 18, Theme.MEDIUM, Theme.TEXT));
+        TextView st = text(sub, 13, Theme.REGULAR, Theme.DIM);
+        st.setPadding(0, dp(2), 0, 0);
+        tx.addView(st);
+        c.addView(tx, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        c.addView(new Glyph(this, Glyph.CHEVRON, Theme.FAINT), new LinearLayout.LayoutParams(dp(22), dp(22)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(10);
         c.setLayoutParams(lp);
-        c.setOnClickListener(l);
+        c.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); l.onClick(v); });
         return c;
     }
 
@@ -259,28 +311,34 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
     private void renderDevices() {
         deviceList.removeAllViews();
         BluetoothDevice cur = pad.getConnected();
+        statusDot.setBackground(dot(cur != null ? Theme.GREEN : Theme.AMBER));
         List<BluetoothDevice> list = new ArrayList<>(devices.values());
         if (list.isEmpty()) {
-            TextView t = text("Aucun appareil. Touche « Chercher ».", 14, false);
-            t.setTextColor(Color.rgb(150, 156, 170));
+            TextView t = text("Aucun appareil pour l'instant.", 14, Theme.REGULAR, Theme.DIM);
+            t.setPadding(dp(2), 0, 0, 0);
             deviceList.addView(t);
         }
         for (BluetoothDevice d : list) {
             boolean bonded = d.getBondState() == BluetoothDevice.BOND_BONDED;
             boolean isCur = cur != null && cur.equals(d);
-            String tag = isCur ? "  ● connecté" : bonded ? "  · associé" : "  · à proximité";
-            TextView t = text(HidGamepad.name(d) + tag, 15, isCur);
-            t.setPadding(dp(14), dp(12), dp(14), dp(12));
-            GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(10));
-            bg.setColor(isCur ? Color.rgb(26, 52, 86) : Color.rgb(26, 28, 34));
-            t.setBackground(bg);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(16), dp(12), dp(16), dp(12));
+            row.setMinimumHeight(dp(52));
+            row.setBackground(Theme.surface(Theme.SURFACE, isCur ? Theme.alpha(Theme.GREEN, 150) : Theme.HAIR,
+                    dp(16), isCur ? 1.5f : 1));
+            row.addView(text(HidGamepad.name(d), 15, isCur ? Theme.MEDIUM : Theme.REGULAR, Theme.TEXT),
+                    new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView tag = text(isCur ? "Connecté" : bonded ? "Associé" : "À proximité", 13,
+                    Theme.MEDIUM, isCur ? Theme.GREEN : Theme.DIM);
+            row.addView(tag);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = dp(6);
-            t.setLayoutParams(lp);
-            t.setOnClickListener(v -> pick(d));
-            deviceList.addView(t);
+            lp.bottomMargin = dp(8);
+            row.setLayoutParams(lp);
+            row.setOnClickListener(v -> pick(d));
+            deviceList.addView(row);
         }
     }
 
