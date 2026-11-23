@@ -1,6 +1,6 @@
 # SA Controller
 
-Transforme un vieux téléphone Android en manette Bluetooth reconnue nativement par une Android TV ou un Mac, sans root et sans rien installer sur la TV.
+Transforme un vieux téléphone Android en manette, en **Bluetooth** (reconnue nativement par une Android TV ou un Mac, sans rien installer) ou en **Wi-Fi** (vers un Mac, avec un petit récepteur fourni).
 
 <p align="center">
   <img src="captures/manette-16-9-repos.png" alt="Manette classique" width="32%">
@@ -8,7 +8,7 @@ Transforme un vieux téléphone Android en manette Bluetooth reconnue nativement
   <img src="captures/gta-en-voiture-16-9.png" alt="Écran GTA San Andreas, en voiture" width="32%">
 </p>
 
-> Version 0.5. L'appli n'a pas encore été testée sur un vrai appareil : voir [Limites](#compatibilité-et-limites).
+> Version 0.6.1. L'appli n'a pas encore été testée sur un vrai appareil : voir [Limites](#compatibilité-et-limites).
 
 ## Fonctionnalités
 
@@ -32,8 +32,9 @@ Recherche des appareils Bluetooth à proximité, association, connexion, déconn
 - **Android TV** : la manette est vue comme une manette Bluetooth standard.
 - **Mac** : les applis qui lisent les manettes génériques (Chrome avec la Gamepad API, Steam / SDL, émulateurs) devraient la voir. En revanche, les jeux qui n'acceptent que les manettes Apple, Xbox ou PlayStation ne la reconnaîtront pas forcément.
 - **Touches GTA par défaut = suppositions.** Elles sont calquées sur la disposition manette Xbox 360 de GTA San Andreas et n'ont pas été vérifiées dans le jeu. À ajuster dans l'écran « Touches ».
-- **Bluetooth uniquement** : pas de Wi-Fi ni d'USB (il faudrait une appli réceptrice côté TV, ou le root).
-- **Pas encore testé sur un vrai appareil** (v0.5).
+- **Wi-Fi : Mac uniquement pour l'instant.** Une Android TV ne laisse pas une appli ordinaire créer une manette virtuelle (il faut le root) : pour la TV, utilise le Bluetooth. Pas d'USB.
+- **Wi-Fi côté Mac = clavier + souris**, pas une vraie manette : macOS n'a pas de manette virtuelle sans pilote signé. Le jeu doit donc accepter le clavier et la souris (voir la table des touches dans `recepteur-mac/sa-recepteur.py`).
+- **Pas encore testé sur un vrai appareil** (v0.6.1). Le Wi-Fi a été vérifié entre l'émulateur Android et le récepteur Mac en mode test.
 
 ## Installation
 
@@ -60,6 +61,29 @@ Variante : touche **Rendre visible**, puis associe le téléphone depuis la TV.
 3. Une fois « Connecté », choisis un écran de manette.
 
 Le bouton **Déconnecter** coupe la liaison. Android retire l'enregistrement HID quand l'appli passe en arrière-plan : elle se réactive au retour au premier plan.
+
+## Mode Wi-Fi (Mac)
+
+En haut de l'écran de connexion, un sélecteur **Bluetooth / Wi-Fi** choisit la liaison (mémorisée). Le Bluetooth n'est pas modifié ; en mode Wi-Fi, il n'est pas utilisé.
+
+**Principe** : le téléphone envoie son état complet (boutons, croix, sticks, gâchettes, mode à pied / en voiture) en **UDP**, sur le port 38492, vers l'adresse du Mac, ~20 fois par seconde et à chaque appui. Chaque paquet remplace le précédent : un paquet perdu ne coince jamais une touche. Le Mac répond par un accusé, ce qui allume le voyant vert. Si le téléphone se tait plus d'une seconde, le récepteur relâche tout. Le téléphone et le Mac doivent être sur le même réseau Wi-Fi (pas de « réseau invité » qui isole les appareils).
+
+**Installer le récepteur sur le Mac** (rien à installer : Python 3 est déjà sur macOS)
+1. Copie le dossier `recepteur-mac` sur le Mac.
+2. Double-clique `lancer.command` (ou, dans Terminal : `python3 sa-recepteur.py`). Au premier lancement, macOS peut demander d'ouvrir le fichier : clic droit › Ouvrir.
+3. Réglages Système › Confidentialité et sécurité › **Accessibilité** : autorise le Terminal, puis relance le récepteur. Sans cela macOS ignore les touches simulées.
+4. Le récepteur affiche son adresse IP (ex. `192.168.1.20`).
+
+<p align="center"><img src="captures/connexion-wifi.png" alt="Écran de connexion, mode Wi-Fi" width="60%"></p>
+
+**Se connecter**
+1. Dans l'appli, choisis **Wi-Fi**.
+2. Touche **Chercher sur le réseau** puis le nom du Mac, ou saisis l'adresse IP et touche **Se connecter**.
+3. Voyant vert = connecté : l'écran de jeu s'ouvre. En cas de coupure, la reconnexion est automatique.
+
+**Touches simulées** (modifiables en tête de `sa-recepteur.py`) : stick gauche = Z/Q/S/D (à pied) ou direction A/D (en voiture) ; stick droit = souris ; RT = clic gauche (à pied) ou W (accélérer) ; LT = clic droit ou S ; A = Espace ; X = Maj ; Y = F ; B = Entrée ; etc. `python3 sa-recepteur.py --test` affiche les événements sans rien injecter, pour vérifier la liaison ; `--souris 1.5` accélère la caméra.
+
+**Android TV en Wi-Fi** : non pris en charge (voir Limites). Le protocole est documenté dans `WifiLink.java` si tu veux écrire un autre récepteur (Windows, Linux).
 
 ## Correspondance des touches HID
 
@@ -118,6 +142,6 @@ Package `com.dynamicagence.icontroller`, dans `app/src/main/java/…` :
 
 ## Version
 
-v0.5 (versionCode 6), `minSdk 28`, `targetSdk 34`.
+v0.6.1 (versionCode 8), `minSdk 28`, `targetSdk 34`.
 
 Réalisation : By Ligrade

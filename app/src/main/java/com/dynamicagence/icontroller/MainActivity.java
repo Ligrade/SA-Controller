@@ -21,6 +21,8 @@ import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.text.InputType;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -51,19 +53,30 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
     private BluetoothDevice pendingBond;
     private String lastStatus = "";
 
+    // ---- Mode Wi-Fi ----
+    private WifiLink wifi;
+    private boolean wifiMode;
+    private boolean wifiOn;                       // lien Wi-Fi établi (accusé reçu du récepteur)
+    private EditText ipField;
+    private LinearLayout wifiFound;
+    private View btSection, wifiSection, btActions, wifiActions;
+    private TextView segBt, segWifi, subtitle;
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setStatusBarColor(Theme.BG);
         getWindow().setNavigationBarColor(Theme.BG);
         pad = new HidGamepad(this, this);
+        wifi = new WifiLink(this, wifiListener);
 
         root = new FrameLayout(this);
         root.setBackgroundColor(Theme.BG);
+        prefs = getSharedPreferences("app", MODE_PRIVATE);
+        wifiMode = "wifi".equals(prefs.getString("liaison", "bt"));
         setupScreen = buildSetup();
         padView = new GamepadView(this, pad);
         padView.setMenuListener(this::showSetup);
-        prefs = getSharedPreferences("app", MODE_PRIVATE);
         gtaKeys = new GtaKeys(this);
         gtaView = new GtaView(this, pad, gtaKeys);
         gtaView.setListener(new GtaView.Listener() {
@@ -95,7 +108,11 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
         f.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         registerReceiver(receiver, f);
 
-        if (hasPerms()) begin(); else requestPerms();
+        applyLink();
+        if (wifiMode) {
+            onStatus("Mode Wi-Fi : saisis l'adresse du récepteur.");
+            if (it.getBooleanExtra("connecter", false)) connectWifi();
+        } else if (hasPerms()) begin(); else requestPerms();
     }
 
     // ---- Permissions ----
@@ -129,6 +146,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
     }
 
     private void begin() {
+        if (wifiMode) return;
         BluetoothAdapter a = pad.getAdapter();
         if (a == null) { onStatus("Ce téléphone n'a pas de Bluetooth."); return; }
         if (!a.isEnabled()) {
@@ -168,9 +186,23 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
         TextView title = text("SA Controller", 34, Theme.LIGHT, Theme.TEXT);
         title.setLetterSpacing(-0.01f);
         left.addView(title);
-        TextView sub = text("Ton téléphone devient une manette Bluetooth.", 15, Theme.REGULAR, Theme.DIM);
-        sub.setPadding(0, dp(4), 0, dp(22));
-        left.addView(sub);
+        subtitle = text("", 15, Theme.REGULAR, Theme.DIM);
+        subtitle.setPadding(0, dp(4), 0, dp(16));
+        left.addView(subtitle);
+
+        // Choix de la liaison : Bluetooth ou Wi-Fi
+        LinearLayout seg = new LinearLayout(this);
+        seg.setOrientation(LinearLayout.HORIZONTAL);
+        seg.setBackground(Theme.surface(Theme.SURFACE, Theme.HAIR, dp(20), 1));
+        seg.setPadding(dp(3), dp(3), dp(3), dp(3));
+        segBt = segment("Bluetooth", false);
+        segWifi = segment("Wi-Fi", true);
+        seg.addView(segBt, new LinearLayout.LayoutParams(0, dp(36), 1f));
+        seg.addView(segWifi, new LinearLayout.LayoutParams(0, dp(36), 1f));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sl.bottomMargin = dp(18);
+        left.addView(seg, sl);
 
         LinearLayout status = new LinearLayout(this);
         status.setOrientation(LinearLayout.HORIZONTAL);
@@ -192,7 +224,17 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
         actions.addView(action("Chercher un appareil", true, v -> scan()));
         actions.addView(action("Rendre visible", false, v -> makeDiscoverable()));
         actions.addView(action("Déconnecter", false, v -> pad.disconnect()));
+        btActions = actions;
         left.addView(actions);
+
+        LinearLayout wactions = new LinearLayout(this);
+        wactions.setOrientation(LinearLayout.VERTICAL);
+        wactions.setPadding(0, dp(22), 0, 0);
+        wactions.addView(action("Se connecter", true, v -> connectWifi()));
+        wactions.addView(action("Chercher sur le réseau", false, v -> scanWifi()));
+        wactions.addView(action("Déconnecter", false, v -> { wifi.stop(); }));
+        wifiActions = wactions;
+        left.addView(wactions);
         split.addView(lsv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.9f));
 
         // Filet vertical
@@ -216,12 +258,14 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
         right.addView(screenTile(Glyph.WHEEL, "GTA San Andreas", "Actions nommées · à pied et en voiture",
                 Theme.AMBER, v -> showGta()));
 
+        LinearLayout bt = new LinearLayout(this);
+        bt.setOrientation(LinearLayout.VERTICAL);
         TextView listTitle = label("APPAREILS");
         listTitle.setPadding(dp(2), dp(22), 0, dp(8));
-        right.addView(listTitle);
+        bt.addView(listTitle);
         deviceList = new LinearLayout(this);
         deviceList.setOrientation(LinearLayout.VERTICAL);
-        right.addView(deviceList);
+        bt.addView(deviceList);
 
         TextView help = text("1  Ouvre les réglages Bluetooth de la TV ou du Mac.\n"
                 + "2  Touche « Chercher un appareil », puis le nom de la TV ou du Mac. "
@@ -229,10 +273,153 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
                 + "3  Une fois connecté, choisis Manette ou GTA San Andreas.", 13, Theme.REGULAR, Theme.DIM);
         help.setLineSpacing(0, 1.25f);
         help.setPadding(dp(2), dp(22), 0, 0);
-        right.addView(help);
+        bt.addView(help);
+        btSection = bt;
+        right.addView(bt);
+
+        LinearLayout wf = new LinearLayout(this);
+        wf.setOrientation(LinearLayout.VERTICAL);
+        TextView wTitle = label("RÉCEPTEUR");
+        wTitle.setPadding(dp(2), dp(22), 0, dp(8));
+        wf.addView(wTitle);
+        ipField = new EditText(this);
+        ipField.setHint("Adresse IP, ex. 192.168.1.20");
+        ipField.setHintTextColor(Theme.FAINT);
+        ipField.setTextColor(Theme.TEXT);
+        ipField.setTextSize(16);
+        ipField.setSingleLine(true);
+        ipField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        ipField.setText(prefs.getString("wifiHote", ""));
+        ipField.setPadding(dp(16), dp(12), dp(16), dp(12));
+        ipField.setBackground(Theme.surface(Theme.SURFACE, Theme.HAIR, dp(16), 1));
+        wf.addView(ipField, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        TextView fTitle = label("TROUVÉS SUR LE RÉSEAU");
+        fTitle.setPadding(dp(2), dp(18), 0, dp(8));
+        wf.addView(fTitle);
+        wifiFound = new LinearLayout(this);
+        wifiFound.setOrientation(LinearLayout.VERTICAL);
+        wf.addView(wifiFound);
+        TextView whelp = text("1  Lance le récepteur sur le Mac (voir le README, dossier recepteur-mac).\n"
+                + "2  Le téléphone et le Mac doivent être sur le même Wi-Fi.\n"
+                + "3  Touche « Chercher sur le réseau » puis le nom du Mac, ou saisis son adresse IP, "
+                + "puis « Se connecter ».", 13, Theme.REGULAR, Theme.DIM);
+        whelp.setLineSpacing(0, 1.25f);
+        whelp.setPadding(dp(2), dp(22), 0, 0);
+        wf.addView(whelp);
+        wifiSection = wf;
+        right.addView(wf);
         split.addView(rsv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.1f));
         return split;
     }
+
+    private TextView segment(String label, boolean wifiSeg) {
+        TextView t = text(label, 14, Theme.MEDIUM, Theme.DIM);
+        t.setGravity(Gravity.CENTER);
+        t.setOnClickListener(v -> setLink(wifiSeg));
+        return t;
+    }
+
+    /** Bascule Bluetooth / Wi-Fi sans toucher au réglage de l'autre liaison. */
+    private void setLink(boolean toWifi) {
+        if (toWifi == wifiMode) return;
+        wifiMode = toWifi;
+        prefs.edit().putString("liaison", toWifi ? "wifi" : "bt").apply();
+        if (toWifi) {
+            pad.disconnect();            // Bluetooth : on lâche la TV, l'enregistrement HID reste prêt
+            pad.setWifi(wifi);
+        } else {
+            wifi.stop();
+            pad.setWifi(null);
+            if (hasPerms()) begin(); else requestPerms();
+        }
+        applyLink();
+    }
+
+    /** Montre ce qui concerne la liaison choisie. */
+    private void applyLink() {
+        pad.setWifi(wifiMode ? wifi : null);
+        btSection.setVisibility(wifiMode ? View.GONE : View.VISIBLE);
+        btActions.setVisibility(wifiMode ? View.GONE : View.VISIBLE);
+        wifiSection.setVisibility(wifiMode ? View.VISIBLE : View.GONE);
+        wifiActions.setVisibility(wifiMode ? View.VISIBLE : View.GONE);
+        subtitle.setText(wifiMode ? "Ton téléphone devient une manette Wi-Fi."
+                : "Ton téléphone devient une manette Bluetooth.");
+        styleSeg(segBt, !wifiMode);
+        styleSeg(segWifi, wifiMode);
+        updateDot();
+        if (wifiMode) onStatus(wifi.isConnected() ? "Connecté en Wi-Fi à " + wifi.hostName()
+                : "Mode Wi-Fi : saisis l'adresse du récepteur.");
+        else onStatus(pad.getConnected() != null ? "Connecté à " + HidGamepad.name(pad.getConnected())
+                : "Bluetooth : choisis un appareil.");
+    }
+
+    private void styleSeg(TextView t, boolean on) {
+        t.setTextColor(on ? Color.WHITE : Theme.DIM);
+        t.setBackground(on ? Theme.surface(Theme.BLUE, Theme.BLUE, dp(17), 0) : null);
+    }
+
+    private boolean linked() { return wifiMode ? wifiOn : pad.getConnected() != null; }
+
+    private void updateDot() {
+        if (statusDot != null) statusDot.setBackground(dot(linked() ? Theme.GREEN : Theme.AMBER));
+        padView.setConnected(linked());
+        gtaView.setConnected(linked());
+    }
+
+    private void connectWifi() {
+        String h = ipField.getText().toString().trim();
+        prefs.edit().putString("wifiHote", h).apply();
+        wifiOn = false;
+        wifi.start(h);
+    }
+
+    private void scanWifi() {
+        wifiFound.removeAllViews();
+        TextView t = text("Recherche en cours…", 14, Theme.REGULAR, Theme.DIM);
+        t.setPadding(dp(2), 0, 0, 0);
+        wifiFound.addView(t);
+        onStatus("Recherche des récepteurs sur le réseau…");
+        wifi.discover();
+    }
+
+    private final WifiLink.Listener wifiListener = new WifiLink.Listener() {
+        @Override public void onWifiState(boolean connected, String message) {
+            if (!wifiMode) return;
+            boolean was = wifiOn;
+            wifiOn = connected;
+            onStatus(message);
+            updateDot();
+            if (connected && !was && setupScreen.getVisibility() == View.VISIBLE) {
+                if ("gta".equals(prefs.getString("ecran", "pad"))) showGta(); else showPad();
+            }
+        }
+
+        @Override public void onWifiFound(String name, String ip) {
+            if (name == null) { // fin de recherche
+                if (wifiFound.getChildCount() == 1 && wifiFound.getChildAt(0) instanceof TextView
+                        && ((TextView) wifiFound.getChildAt(0)).getText().toString().startsWith("Recherche")) {
+                    ((TextView) wifiFound.getChildAt(0)).setText("Aucun récepteur trouvé. Saisis l'adresse IP à la main.");
+                }
+                return;
+            }
+            if (wifiFound.getChildCount() == 1 && wifiFound.getChildAt(0) instanceof TextView
+                    && !(wifiFound.getChildAt(0) instanceof LinearLayout)
+                    && ((TextView) wifiFound.getChildAt(0)).getText().toString().startsWith("Recherche"))
+                wifiFound.removeAllViews();
+            TextView row = text(name + "   " + ip, 15, Theme.MEDIUM, Theme.TEXT);
+            row.setPadding(dp(16), dp(12), dp(16), dp(12));
+            row.setMinHeight(dp(52));
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(Theme.surface(Theme.SURFACE, Theme.HAIR, dp(16), 1));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = dp(8);
+            row.setLayoutParams(lp);
+            row.setOnClickListener(v -> { ipField.setText(ip); connectWifi(); });
+            wifiFound.addView(row);
+        }
+    };
 
     private GradientDrawable dot(int color) {
         GradientDrawable g = new GradientDrawable();
@@ -311,7 +498,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
     private void renderDevices() {
         deviceList.removeAllViews();
         BluetoothDevice cur = pad.getConnected();
-        statusDot.setBackground(dot(cur != null ? Theme.GREEN : Theme.AMBER));
+        updateDot();
         List<BluetoothDevice> list = new ArrayList<>(devices.values());
         if (list.isEmpty()) {
             TextView t = text("Aucun appareil pour l'instant.", 14, Theme.REGULAR, Theme.DIM);
@@ -389,7 +576,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
                 renderDevices();
             } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(act)) {
                 int s = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-                if (s == BluetoothAdapter.STATE_ON && hasPerms()) { pad.start(); refreshBonded(); }
+                if (s == BluetoothAdapter.STATE_ON && hasPerms() && !wifiMode) { pad.start(); refreshBonded(); }
                 else if (s == BluetoothAdapter.STATE_TURNING_OFF || s == BluetoothAdapter.STATE_OFF) pad.onBluetoothOff();
             }
         }
@@ -410,6 +597,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     private void showPad() {
         show(padView);
+        pad.setMode(GtaKeys.FOOT);
         padView.setStatus(lastStatus);
         prefs.edit().putString("ecran", "pad").apply();
     }
@@ -418,6 +606,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
         show(gtaView);
         gtaView.setStatus(lastStatus);
         gtaView.refreshKeys();
+        pad.setMode(gtaView.getMode());
         gtaView.setActive(true);
         prefs.edit().putString("ecran", "gta").apply();
     }
@@ -457,6 +646,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     @Override protected void onResume() {
         super.onResume();
+        if (wifiMode) { if (gtaView.getVisibility() == View.VISIBLE) gtaView.setActive(true); return; }
         BluetoothAdapter a = pad.getAdapter();
         if (hasPerms() && a != null && a.isEnabled() && !pad.isStarted()) { pad.start(); refreshBonded(); }
         else pad.ensureRegistered();
@@ -475,6 +665,7 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
             BluetoothAdapter a = pad.getAdapter();
             if (a != null && a.isDiscovering()) a.cancelDiscovery();
         } catch (SecurityException ignored) { }
+        wifi.stop();
         pad.stop();
         super.onDestroy();
     }
@@ -490,10 +681,9 @@ public class MainActivity extends Activity implements HidGamepad.Listener {
 
     @Override public void onConnectionChanged(BluetoothDevice device, boolean connected) {
         if (connected) devices.put(device.getAddress(), device);
-        padView.setConnected(pad.getConnected() != null);
-        gtaView.setConnected(pad.getConnected() != null);
+        updateDot();
         renderDevices();
-        if (connected && setupScreen.getVisibility() == View.VISIBLE) {
+        if (!wifiMode && connected && setupScreen.getVisibility() == View.VISIBLE) {
             if ("gta".equals(prefs.getString("ecran", "pad"))) showGta(); else showPad();
         }
     }

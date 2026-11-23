@@ -114,6 +114,7 @@ public class HidGamepad {
     private volatile boolean proxyPending;
     private volatile boolean stopped;
     private volatile BluetoothDevice connected;
+    private volatile WifiLink wifi;   // non nul = mode Wi-Fi : les rapports partent en UDP au lieu du Bluetooth
     private BluetoothDevice pendingConnect;
     private BluetoothDevice lastHost;
 
@@ -138,6 +139,12 @@ public class HidGamepad {
         handler = new Handler(thread.getLooper());
         executor = handler::post;
     }
+
+    /** Active (lien non nul) ou coupe (null) le mode Wi-Fi. Le Bluetooth reste intact quand il est nul. */
+    public void setWifi(WifiLink w) { wifi = w; if (w != null) sendNow(); }
+    public void setMode(int m) { WifiLink w = wifi; if (w != null) w.setMode(m); modeValue = m; }
+    private volatile int modeValue;
+    private boolean canSend() { WifiLink w = wifi; return w != null ? w.isActive() : (hid != null && connected != null); }
 
     public BluetoothAdapter getAdapter() { return adapter; }
     public boolean isRegistered() { return registered; }
@@ -434,7 +441,7 @@ public class HidGamepad {
 
     /** Boutons / croix : photo de l'état immédiate, pour ne jamais perdre un appui bref. */
     private void sendNow() {
-        if (hid == null || connected == null) return;
+        if (!canSend()) return;
         final byte[] data;
         synchronized (lock) {
             flushPending = false;
@@ -447,7 +454,7 @@ public class HidGamepad {
 
     /** Sticks : on regroupe les mouvements (≈120 rapports/s max) pour éviter la latence. */
     private void sendSoon() {
-        if (hid == null || connected == null) return;
+        if (!canSend()) return;
         synchronized (lock) {
             if (flushPending) return;
             flushPending = true;
@@ -468,6 +475,8 @@ public class HidGamepad {
     };
 
     private void transmit(byte[] data) {
+        WifiLink w = wifi;
+        if (w != null) { w.setMode(modeValue); w.send(data); lastSendMs = SystemClock.uptimeMillis(); return; }
         BluetoothHidDevice h = hid;
         BluetoothDevice target = connected;
         if (h == null || target == null) return;

@@ -371,6 +371,7 @@ public class GtaView extends View implements SensorEventListener {
         if (m == mode) return;
         releaseAll();
         mode = m;
+        pad.setMode(m);
         buildControls();
         if (getWidth() > 0) layout(getWidth(), getHeight());
         updateSensor();
